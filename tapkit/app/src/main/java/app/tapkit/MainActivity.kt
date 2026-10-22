@@ -69,6 +69,7 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         try {
             out.put("tag", NfcOps.identify(tag))
             when (name) {
+                "magic" -> out.put("result", NfcOps.detectMagic(tag, keyList(op)))
                 "dump" -> out.put("result", NfcOps.dumpClassic(tag, keyList(op)))
                 "writeUid" -> {
                     out.put("result", NfcOps.writeUidMagic(tag, op.optString("uid"), keyList(op)))

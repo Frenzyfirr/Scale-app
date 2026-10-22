@@ -39,6 +39,7 @@ object NfcOps {
         val o = JSONObject()
         o.put("ok", true)
         o.put("uid", Hex.encode(tag.id))
+        o.put("uidLen", tag.id.size)
         val techs = JSONArray()
         val short = tag.techList.map { it.substringAfterLast('.') }
         short.forEach { techs.put(it) }
@@ -131,28 +132,110 @@ object NfcOps {
         return o
     }
 
-    // ---- write a UID onto a magic / UID-changeable card -----------------------------------
+    // ---- magic-card detection (non-destructive) -------------------------------------------
 
-    /** Writes [uidHex] (4 bytes / 8 hex) to block 0. Tries the clean Gen2/CUID path first
-     *  (ordinary authenticated writeBlock), then the Gen1a "backdoor" path. Existing SAK/ATQA
-     *  and manufacturer bytes are kept; only the UID and its checksum byte change. */
-    fun writeUidMagic(tag: Tag, uidHex: String, extraKeysHex: List<String>): JSONObject {
-        val uid = runCatching { Hex.decode(uidHex) }.getOrNull()
-            ?: return fail("UID must be hex.")
-        if (uid.size != 4) return fail("This card uses a 4-byte UID, so enter exactly 8 hex characters.")
-        val bcc = (uid[0].toInt() xor uid[1].toInt() xor uid[2].toInt() xor uid[3].toInt()).toByte()
+    /** Works out what kind of magic card this is, without changing it. Gen1a is found by its
+     *  backdoor command; Gen2/CUID by writing block 0 back with the exact same bytes (a no-op
+     *  write that only a direct-write card accepts). Gen3/Gen4 can't be probed safely from a
+     *  phone, so they're reported as "not detected" rather than guessed at. */
+    fun detectMagic(tag: Tag, extraKeysHex: List<String>): JSONObject {
+        val o = JSONObject()
+        o.put("ok", true)
+        val uidLen = tag.id.size
+        o.put("uidLen", uidLen)
 
-        val gen2 = tryGen2(tag, uid, bcc, extraKeysHex)
-        if (gen2.optBoolean("ok")) return gen2
-        val gen1a = tryGen1a(tag, uid, bcc)
-        if (gen1a.optBoolean("ok")) return gen1a
+        val gen1a = probeGen1a(tag)
+        o.put("gen1a", gen1a)
+        val gen2 = probeGen2(tag, extraKeysHex)
+        o.put("gen2", gen2)
 
-        return fail("Could not change the UID. " + gen2.optString("error") +
-                " / " + gen1a.optString("error") +
-                " This usually means the card is not a magic/UID-changeable card, or this phone's NFC chip can't send the needed commands.")
+        val magic = gen1a || gen2.optBoolean("writable")
+        o.put("magic", magic)
+        o.put("generation", when {
+            gen1a && gen2.optBoolean("writable") -> "Gen1a + direct write"
+            gen1a -> "Gen1a (backdoor)"
+            gen2.optBoolean("writable") -> "Gen2 / CUID (direct write)"
+            else -> "Not detected as magic"
+        })
+        o.put("uidNote", uidNote(magic, uidLen))
+        return o
     }
 
-    private fun tryGen2(tag: Tag, uid: ByteArray, bcc: Byte, extraKeysHex: List<String>): JSONObject {
+    private fun probeGen1a(tag: Tag): Boolean {
+        val a = NfcA.get(tag) ?: return false
+        return try {
+            a.connect()
+            val r = a.transceive(byteArrayOf(0x40))   // unlock step 1; a Gen1a card answers 0x0A
+            val ack = r != null && r.isNotEmpty() && (r[0].toInt() and 0xFF) == 0x0A
+            if (ack) runCatching { a.transceive(byteArrayOf(0x43)) }  // step 2; field reset undoes it
+            ack
+        } catch (e: Exception) {
+            false
+        } finally {
+            runCatching { a.close() }
+        }
+    }
+
+    private fun probeGen2(tag: Tag, extraKeysHex: List<String>): JSONObject {
+        val mc = MifareClassic.get(tag)
+            ?: return JSONObject().put("writable", false).put("reason", "not MIFARE Classic")
+        val keys = (extraKeysHex.map { it.uppercase() } + DEFAULT_KEYS).distinct()
+            .mapNotNull { runCatching { Hex.decode(it) }.getOrNull() }.filter { it.size == 6 }
+        return try {
+            mc.connect()
+            var authed = false
+            for (k in keys) { if (mc.authenticateSectorWithKeyA(0, k)) { authed = true; break } }
+            if (!authed) return JSONObject().put("writable", false).put("reason", "no known key for sector 0")
+            val block0 = mc.readBlock(0)
+            mc.writeBlock(0, block0)                  // identical bytes; a normal card refuses this
+            JSONObject().put("writable", true)
+        } catch (e: Exception) {
+            JSONObject().put("writable", false).put("reason", "block 0 is read-only")
+        } finally {
+            runCatching { mc.close() }
+        }
+    }
+
+    private fun uidNote(magic: Boolean, uidLen: Int): String = when {
+        !magic -> "Not recognised as a magic card, so its UID can't be changed here. Advanced Gen3/Gen4 types can't be probed from a phone — check those with a Proxmark."
+        uidLen == 4 -> "4-byte card: you can write any 4-byte UID (8 hex). A 7-byte UID needs a 7-byte magic card — the two are not interchangeable."
+        uidLen == 7 -> "7-byte card: you can write any 7-byte UID (14 hex)."
+        uidLen == 10 -> "10-byte UID card (rare, usually Gen4): write a 10-byte UID (20 hex)."
+        else -> "UID is $uidLen bytes."
+    }
+
+    // ---- write a UID onto a magic / UID-changeable card -----------------------------------
+
+    /** Writes a 4- or 7-byte UID to block 0. The entered length must match the card's current UID
+     *  length — a 4-byte card can't hold a 7-byte UID, and vice versa. Tries the Gen2/CUID direct
+     *  write first, then the Gen1a backdoor. Existing SAK/ATQA and manufacturer bytes are kept;
+     *  only the UID (and, for a 4-byte UID, its BCC checksum) change. */
+    fun writeUidMagic(tag: Tag, uidHex: String, extraKeysHex: List<String>): JSONObject {
+        val uid = runCatching { Hex.decode(uidHex) }.getOrNull() ?: return fail("UID must be hex.")
+        if (uid.size != 4 && uid.size != 7)
+            return fail("Enter 8 hex characters (4-byte UID) or 14 hex characters (7-byte UID).")
+        val cur = tag.id.size
+        if ((cur == 4 || cur == 7) && cur != uid.size)
+            return fail("This card currently uses a $cur-byte UID. A $cur-byte magic card can't take a ${uid.size}-byte UID — they aren't interchangeable. Enter a ${cur * 2}-hex UID, or use a ${uid.size}-byte card.")
+
+        val gen2 = tryGen2(tag, uid, extraKeysHex)
+        if (gen2.optBoolean("ok")) return gen2
+        val gen1a = tryGen1a(tag, uid)
+        if (gen1a.optBoolean("ok")) return gen1a
+
+        return fail("Could not change the UID. ${gen2.optString("error")} / ${gen1a.optString("error")}. " +
+                "This usually means it isn't a magic/UID-changeable card, or this phone's NFC chip can't send the needed commands.")
+    }
+
+    private fun patchBlock0(block0: ByteArray, uid: ByteArray) {
+        System.arraycopy(uid, 0, block0, 0, uid.size)
+        if (uid.size == 4) {   // a 4-byte UID stores a BCC checksum byte right after it
+            block0[4] = (uid[0].toInt() xor uid[1].toInt() xor uid[2].toInt() xor uid[3].toInt()).toByte()
+        }
+        // a 7-byte UID has no stored BCC byte; the card computes the cascade checksums itself
+    }
+
+    private fun tryGen2(tag: Tag, uid: ByteArray, extraKeysHex: List<String>): JSONObject {
         val mc = MifareClassic.get(tag) ?: return fail("not MIFARE Classic")
         val keys = (extraKeysHex.map { it.uppercase() } + DEFAULT_KEYS).distinct()
             .mapNotNull { runCatching { Hex.decode(it) }.getOrNull() }.filter { it.size == 6 }
@@ -161,12 +244,11 @@ object NfcOps {
             var ok = false
             for (k in keys) { if (mc.authenticateSectorWithKeyA(0, k)) { ok = true; break } }
             if (!ok) return fail("no known key for sector 0")
-            val block0 = mc.readBlock(0).copyOf()          // keep SAK/ATQA/manufacturer bytes
-            System.arraycopy(uid, 0, block0, 0, 4)
-            block0[4] = bcc
+            val block0 = mc.readBlock(0).copyOf()   // keep SAK/ATQA/manufacturer bytes
+            patchBlock0(block0, uid)
             mc.writeBlock(0, block0)
             val check = mc.readBlock(0)
-            if (!check.copyOfRange(0, 4).contentEquals(uid))
+            if (!check.copyOfRange(0, uid.size).contentEquals(uid))
                 return fail("write did not stick (not a Gen2/CUID card)")
             return JSONObject().put("ok", true).put("method", "Gen2 / CUID").put("uid", Hex.encode(uid))
         } catch (e: Exception) {
@@ -176,22 +258,23 @@ object NfcOps {
         }
     }
 
-    private fun tryGen1a(tag: Tag, uid: ByteArray, bcc: Byte): JSONObject {
+    private fun tryGen1a(tag: Tag, uid: ByteArray): JSONObject {
         val a = NfcA.get(tag) ?: return fail("no NfcA")
         try {
             a.connect()
-            // Gen1a "backdoor": wake (0x40) then unlock (0x43). Magic cards answer 0x0A (ACK).
+            // Backdoor: wake (0x40) then unlock (0x43); a Gen1a card answers 0x0A (ACK).
             val r1 = runCatching { a.transceive(byteArrayOf(0x40)) }.getOrNull()
             if (r1 == null || r1.isEmpty() || (r1[0].toInt() and 0xFF) != 0x0A)
                 return fail("no backdoor response")
             a.transceive(byteArrayOf(0x43))
-            // Standard MIFARE write of block 0: command A0 00, then 16 data bytes.
-            val block0 = ByteArray(16)
-            System.arraycopy(uid, 0, block0, 0, 4)
-            block0[4] = bcc
-            block0[5] = 0x08.toByte()                         // SAK
-            block0[6] = 0x04.toByte(); block0[7] = 0x00.toByte()  // ATQA
-            for (i in 8 until 16) block0[i] = (0x62 + (i - 8)).toByte()  // placeholder manufacturer
+            // Read current block 0 so we keep its SAK/ATQA/manufacturer bytes, then patch the UID.
+            val cur = runCatching { a.transceive(byteArrayOf(0x30, 0x00)) }.getOrNull()
+            val block0 = if (cur != null && cur.size >= 16) cur.copyOf(16) else ByteArray(16).also {
+                it[5] = 0x08.toByte(); it[6] = 0x04.toByte(); it[7] = 0x00.toByte()
+                for (i in 8 until 16) it[i] = (0x62 + (i - 8)).toByte()
+            }
+            patchBlock0(block0, uid)
+            // Standard MIFARE write of block 0: command A0 00, then the 16 data bytes.
             val ack = runCatching { a.transceive(byteArrayOf(0xA0.toByte(), 0x00)) }.getOrNull()
             if (ack == null || ack.isEmpty() || (ack[0].toInt() and 0xFF) != 0x0A)
                 return fail("block-0 write not acked")

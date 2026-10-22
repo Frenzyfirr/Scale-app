@@ -100,11 +100,12 @@ textarea{resize:vertical;min-height:52px;font-family:var(--mono);font-size:13px}
     <div class="card">
       <h2>Write a UID to a magic card</h2>
       <p class="muted">For UID‑changeable (“magic”, Gen2/CUID or Gen1a) cards — used to provision or replace cards in an access system you control.</p>
-      <label for="uidInput">New UID — 8 hex characters (4 bytes)</label>
-      <input id="uidInput" class="hex" maxlength="11" placeholder="DEADBEEF" autocomplete="off" autocapitalize="characters">
+      <label for="uidInput">New UID — 8 hex (4‑byte) or 14 hex (7‑byte)</label>
+      <input id="uidInput" class="hex" maxlength="14" placeholder="DEADBEEF" autocomplete="off" autocapitalize="characters">
       <button class="btn sec" onclick="useLast()">Use UID from last scan</button>
       <label for="keys">Extra keys to try (optional, one 12‑hex key per line)</label>
       <textarea id="keys" placeholder="FFFFFFFFFFFF"></textarea>
+      <button class="btn sec" onclick="armMagic()"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg>Check card type, size &amp; UID length</button>
       <button class="btn" onclick="armWriteUid()"><svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Write UID to magic card</button>
       <div class="note warn">Only write cards you own, for a system you're authorised to manage. Tapkit does not crack unknown keys.</div>
     </div>
@@ -191,9 +192,10 @@ function keyLines(){
 
 // ---- actions
 function armScan(){ arm($("withDump").checked ? {op:"dump"} : {op:"scan"}, "Hold the card to your phone", "Reading…"); }
+function armMagic(){ arm({op:"magic", keys:keyLines()}, "Hold the card to your phone", "Identifying card type & size…"); }
 function armWriteUid(){
   var uid=($("uidInput").value||"").replace(/[^0-9a-fA-F]/g,"");
-  if(uid.length!==8){ toast("Enter exactly 8 hex characters."); return; }
+  if(uid.length!==8 && uid.length!==14){ toast("Enter 8 hex (4‑byte) or 14 hex (7‑byte)."); return; }
   arm({op:"writeUid", uid:uid, keys:keyLines()}, "Tap the magic card to write", "Writing UID "+uid.toUpperCase()+"…");
 }
 function armReadNdef(){ arm({op:"readNdef"}, "Hold the tag to your phone", "Reading NDEF…"); }
@@ -219,6 +221,7 @@ window.onNfcResult=function(res){
   var tag = res.tag||{};
   if(tag.uid) lastUid = tag.uid;
   if(res.op==="scan"||res.op==="dump") renderScan(res);
+  else if(res.op==="magic") renderMagic(res);
   else if(res.op==="writeUid") renderWriteUid(res);
   else if(res.op==="readNdef") renderNdef(res);
   else if(res.op==="writeNdef") renderWriteNdef(res);
@@ -233,7 +236,7 @@ function tagCard(tag){
   var extra="";
   if(d.sizeBytes){ extra='<div class="kv"><span>Size</span><span class="v">'+d.sizeBytes+' bytes · '+d.sectors+' sectors</span></div>'; }
   return '<div class="card">'+
-    '<p class="muted">UID</p><div class="big">'+esc(tag.uid||"?")+'</div>'+
+    '<p class="muted">UID'+(tag.uidLen?' · '+tag.uidLen+' bytes':'')+'</p><div class="big">'+esc(tag.uid||"?")+'</div>'+
     '<div class="kv"><span>Type</span><span class="v">'+esc(tag.kind||"?")+'</span></div>'+
     (tag.atqa?'<div class="kv"><span>ATQA / SAK</span><span class="v">'+esc(tag.atqa)+' / '+esc(tag.sak)+'</span></div>':'')+
     extra+
@@ -262,6 +265,19 @@ function renderScan(res){
   $("scanResult").innerHTML=html;
 }
 
+function renderMagic(res){
+  var tag=res.tag||{}, r=res.result||{}, html=tagCard(tag);
+  if(r.ok){
+    var g2 = r.gen2||{};
+    html+='<div class="card"><h2>Magic card check</h2>'+
+      '<div class="kv"><span>Generation</span><span class="v '+(r.magic?'ok':'')+'">'+esc(r.generation)+'</span></div>'+
+      '<div class="kv"><span>UID length</span><span class="v">'+esc(r.uidLen)+' bytes</span></div>'+
+      '<div class="kv"><span>Gen1a backdoor</span><span class="v">'+(r.gen1a?'yes':'no')+'</span></div>'+
+      '<div class="kv"><span>Direct block‑0 write</span><span class="v">'+(g2.writable?'yes (Gen2/CUID)':'no'+(g2.reason?' — '+esc(g2.reason):''))+'</span></div>'+
+      '<div class="note'+(r.magic?'':' warn')+'">'+esc(r.uidNote)+'</div></div>';
+  } else html+='<div class="card"><span class="bad">'+esc(r.error||'Check failed')+'</span></div>';
+  $("uidResult").innerHTML=html;
+}
 function renderWriteUid(res){
   var r=res.result||{};
   var html;
