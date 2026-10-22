@@ -2,7 +2,8 @@ name: Build APK
 on:
   push:
     branches: [main]
-    paths-ignore: ['sketch-to-plan/**', '.github/workflows/sketchplan.yml', 'notes-app/**', '.github/workflows/notesapp.yml']
+    # Only the scale app's own files start a scale build; other apps in this repo never do.
+    paths: ['app/**', 'build.gradle.kts', 'settings.gradle.kts', 'gradle.properties']
   workflow_dispatch: {}
 permissions:
   contents: write
