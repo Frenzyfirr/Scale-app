@@ -28,7 +28,7 @@ jobs:
       - name: Show build errors
         if: failure()
         run: |
-          msg=$( (grep -nE "^e: |error:|What went wrong|Could not|Caused by|FAILURE|> " build.log || tail -n 40 build.log) | head -n 45 | cut -c1-300 | sed -e 's/%/%25/g' | sed ':a;N;$!ba;s/\n/%0A/g')
+          msg=$( (grep -nE "^e: |^w: .*error|error:|What went wrong|Could not|Caused by|FAILURE|^> [^T]" build.log || tail -n 40 build.log) | head -n 45 | cut -c1-300 | sed -e 's/%/%25/g' | sed ':a;N;$!ba;s/\n/%0A/g')
           echo "::error title=Build log::${msg}"
       - name: Rename APK
         run: cp app/build/outputs/apk/release/app-release.apk VScaleOffline-${{ github.run_number }}.apk

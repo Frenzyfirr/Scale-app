@@ -22,9 +22,10 @@ object Reminders {
         schedule(ctx)
     }
 
-    private fun settings(ctx: Context): JSONObject? = try {
-        JSONObject(ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, null) ?: return null)
-    } catch (_: Exception) { null }
+    private fun settings(ctx: Context): JSONObject? {
+        val raw = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY, null) ?: return null
+        return try { JSONObject(raw) } catch (_: Exception) { null }
+    }
 
     private fun pending(ctx: Context): PendingIntent =
         PendingIntent.getBroadcast(
