@@ -1,6 +1,8 @@
 package app.tapkit
 
 import android.app.Activity
+import android.content.Intent
+import android.net.Uri
 import android.nfc.NfcAdapter
 import android.nfc.Tag
 import android.os.Bundle
@@ -10,7 +12,9 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.webkit.WebViewAssetLoader
+import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 
 /**
  * Tapkit. A WebView holds the simple UI; all NFC happens natively here, because NFC is not
@@ -24,6 +28,10 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
     private var nfc: NfcAdapter? = null
 
     @Volatile private var pending: JSONObject = JSONObject().put("op", "scan")
+
+    // Saved scans live in a small JSON file in the app's private storage.
+    private val cardsFile by lazy { File(filesDir, "cards.json") }
+    private var pendingExport: ByteArray? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -118,5 +126,77 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
             nfc?.isEnabled != true -> "disabled"
             else -> "ready"
         }
+
+        @JavascriptInterface
+        fun listCards(): String {
+            val t = runCatching { if (cardsFile.exists()) cardsFile.readText() else "[]" }.getOrDefault("[]")
+            return t.ifBlank { "[]" }
+        }
+
+        @JavascriptInterface
+        fun saveCard(json: String): String {
+            return try {
+                val arr = JSONArray(listCards())
+                val rec = JSONObject(json)
+                val id = System.currentTimeMillis().toString()
+                rec.put("id", id)
+                arr.put(rec)
+                cardsFile.writeText(arr.toString())
+                id
+            } catch (e: Exception) {
+                ""
+            }
+        }
+
+        @JavascriptInterface
+        fun removeCard(id: String) {
+            runCatching {
+                val arr = JSONArray(listCards())
+                val out = JSONArray()
+                for (i in 0 until arr.length()) {
+                    val o = arr.getJSONObject(i)
+                    if (o.optString("id") != id) out.put(o)
+                }
+                cardsFile.writeText(out.toString())
+            }
+        }
+
+        @JavascriptInterface
+        fun clearCards() {
+            runCatching { cardsFile.writeText("[]") }
+        }
+
+        /** Hand the user a Save-As dialog (SAF) to write a text/CSV file wherever they choose. */
+        @JavascriptInterface
+        fun exportText(name: String, text: String, mime: String) {
+            pendingExport = text.toByteArray(Charsets.UTF_8)
+            runOnUiThread {
+                val i = Intent(Intent.ACTION_CREATE_DOCUMENT).apply {
+                    addCategory(Intent.CATEGORY_OPENABLE)
+                    type = if (mime.isBlank()) "text/plain" else mime
+                    putExtra(Intent.EXTRA_TITLE, name)
+                }
+                runCatching { startActivityForResult(i, REQ_EXPORT) }.onFailure {
+                    pendingExport = null
+                    post("window.__toast && window.__toast('No file app to save with.')")
+                }
+            }
+        }
     }
+
+    @Deprecated("Simple SAF result")
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQ_EXPORT) {
+            val uri: Uri? = data?.data
+            val bytes = pendingExport
+            pendingExport = null
+            if (resultCode == RESULT_OK && uri != null && bytes != null) {
+                val ok = runCatching { contentResolver.openOutputStream(uri)?.use { it.write(bytes) } }.isSuccess
+                post("window.__toast && window.__toast('" + (if (ok) "Saved" else "Could not save") + "')")
+            }
+        }
+    }
+
+    companion object { private const val REQ_EXPORT = 7 }
 }

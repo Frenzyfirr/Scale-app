@@ -31,7 +31,8 @@ main{padding:14px 16px 40px;max-width:680px;margin:0 auto}
 .panel.on{display:flex}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px}
 h2{font-size:15px;margin:0 0 4px}
-p{margin:0 0 2px} .muted{color:var(--muted);font-size:13.5px}
+p{margin:0 0 2px} .muted{color:var(--muted);font-size:13.5px} .small{font-size:12px}
+.btn.sm{width:auto;min-height:0;padding:7px 11px;font-size:13px}
 label{display:block;font-size:12.5px;color:var(--muted);margin:10px 0 4px;font-weight:600}
 input,textarea{width:100%;font:15px var(--f);padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink)}
 input.hex{font-family:var(--mono);letter-spacing:.12em;text-transform:uppercase}
@@ -80,8 +81,9 @@ textarea{resize:vertical;min-height:52px;font-family:var(--mono);font-size:13px}
 <main>
   <div class="seg" role="tablist">
     <button role="tab" aria-selected="true" data-tab="scan">Scan</button>
-    <button role="tab" aria-selected="false" data-tab="uid">Write&nbsp;UID</button>
+    <button role="tab" aria-selected="false" data-tab="uid">Write</button>
     <button role="tab" aria-selected="false" data-tab="ndef">NDEF</button>
+    <button role="tab" aria-selected="false" data-tab="saved">Saved</button>
   </div>
 
   <!-- SCAN -->
@@ -131,6 +133,21 @@ textarea{resize:vertical;min-height:52px;font-family:var(--mono);font-size:13px}
     </div>
     <div class="result" id="ndefResult"></div>
   </section>
+
+  <!-- SAVED -->
+  <section class="panel" id="p-saved">
+    <div class="card">
+      <h2>Saved cards</h2>
+      <p class="muted" id="savedCount">…</p>
+      <div class="row">
+        <button class="btn sec" onclick="exportSaved('csv')">Export CSV</button>
+        <button class="btn sec" onclick="exportSaved('txt')">Export TXT</button>
+      </div>
+      <button class="btn sec" id="clearBtn" onclick="clearSaved()" style="margin-top:8px">Clear all</button>
+      <p class="muted small" style="margin-top:8px">Saved on this phone only. Scan a card, then tap “Save to app” on the result.</p>
+    </div>
+    <div id="savedList"></div>
+  </section>
 </main>
 
 <div id="overlay" onclick="cancelTap(event)">
@@ -151,6 +168,9 @@ var armed = null;
 
 function $(id){return document.getElementById(id)}
 function toast(m){var t=$("toast");t.textContent=m;t.classList.add("on");setTimeout(function(){t.classList.remove("on")},2400)}
+window.__toast=toast;
+function curTab(){var b=document.querySelector(".seg button[aria-selected=true]");return b?b.dataset.tab:"scan"}
+function fmtTime(iso){try{return new Date(iso).toLocaleString()}catch(e){return iso||""}}
 
 // tabs
 document.querySelectorAll(".seg button").forEach(function(b){
@@ -158,6 +178,7 @@ document.querySelectorAll(".seg button").forEach(function(b){
     document.querySelectorAll(".seg button").forEach(function(x){x.setAttribute("aria-selected",x===b)});
     document.querySelectorAll(".panel").forEach(function(p){p.classList.remove("on")});
     $("p-"+b.dataset.tab).classList.add("on");
+    if(b.dataset.tab==="saved") loadSaved();
   };
 });
 
@@ -218,6 +239,7 @@ setKind("url");
 window.onNfcResult=function(res){
   $("overlay").classList.remove("on");
   if(navigator.vibrate) try{navigator.vibrate(40)}catch(_){}
+  window.__last = res;
   var tag = res.tag||{};
   if(tag.uid) lastUid = tag.uid;
   if(res.op==="scan"||res.op==="dump") renderScan(res);
@@ -229,6 +251,15 @@ window.onNfcResult=function(res){
 };
 
 function esc(s){return (s==null?"":""+s).replace(/[&<>]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c]})}
+function saveBar(){ return '<div class="card"><button class="btn sec" onclick="saveLast()"><svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>Save to app</button></div>'; }
+function saveLast(){
+  var res=window.__last;
+  if(!res||!res.tag||!res.tag.uid){ toast("Nothing to save yet."); return; }
+  if(!N||!N.saveCard){ toast("Saving needs the Tapkit app."); return; }
+  var rec={ time:new Date().toISOString(), op:res.op, tag:res.tag, result:res.result||null, label:"" };
+  try{ var id=N.saveCard(JSON.stringify(rec)); toast(id?"Saved to app":"Save failed"); if(curTab()==="saved") loadSaved(); }
+  catch(e){ toast("Save failed: "+e); }
+}
 
 function tagCard(tag){
   var chips=(tag.techs||[]).map(function(t){return '<span class="chip">'+esc(t)+'</span>'}).join("");
@@ -262,6 +293,7 @@ function renderScan(res){
   }
   if(tag.kind && tag.kind.indexOf("MIFARE Classic")<0)
     html+='<div class="note">This tag isn\'t MIFARE Classic, so sector data and magic‑UID writing don\'t apply to it.</div>';
+  html+=saveBar();
   $("scanResult").innerHTML=html;
 }
 
@@ -276,6 +308,7 @@ function renderMagic(res){
       '<div class="kv"><span>Direct block‑0 write</span><span class="v">'+(g2.writable?'yes (Gen2/CUID)':'no'+(g2.reason?' — '+esc(g2.reason):''))+'</span></div>'+
       '<div class="note'+(r.magic?'':' warn')+'">'+esc(r.uidNote)+'</div></div>';
   } else html+='<div class="card"><span class="bad">'+esc(r.error||'Check failed')+'</span></div>';
+  if(r.ok) html+=saveBar();
   $("uidResult").innerHTML=html;
 }
 function renderWriteUid(res){
@@ -302,6 +335,7 @@ function renderNdef(res){
       html+='<p class="muted" style="margin-top:8px">'+(r.writable?'Writable':'Read‑only')+' · up to '+esc(r.maxSize)+' bytes</p></div>';
     }
   } else html+='<div class="card"><span class="bad">'+esc(r.error)+'</span></div>';
+  if(r.ok) html+=saveBar();
   $("ndefResult").innerHTML=html;
 }
 function renderWriteNdef(res){
@@ -309,6 +343,75 @@ function renderWriteNdef(res){
   $("ndefResult").innerHTML = r.ok
     ? '<div class="card"><span class="ok">Written ✓</span><p class="muted">'+esc(r.method)+'</p></div>'
     : '<div class="card"><span class="bad">Write failed</span><p class="muted">'+esc(r.error)+'</p></div>';
+}
+
+// ---- saved cards + export
+function loadSaved(){
+  var list=$("savedList");
+  if(!N||!N.listCards){ $("savedCount").textContent=""; list.innerHTML='<div class="note">Saving needs the Tapkit app.</div>'; return; }
+  var arr=[]; try{ arr=JSON.parse(N.listCards()||"[]"); }catch(e){}
+  $("savedCount").textContent = arr.length ? (arr.length+(arr.length===1?" card saved":" cards saved")) : "No saved cards yet.";
+  var html="";
+  arr.slice().reverse().forEach(function(rec){
+    var t=rec.tag||{}, res=rec.result||{};
+    var sub=[fmtTime(rec.time)];
+    if(t.kind) sub.push(t.kind);
+    if(t.uidLen) sub.push(t.uidLen+"‑byte UID");
+    if(res.generation && res.magic) sub.push(res.generation);
+    html+='<div class="card">'+
+      '<div class="kv" style="border:0;padding:0 0 4px"><span class="v" style="text-align:left;font-size:16px;color:var(--accent)">'+esc(t.uid||"?")+'</span>'+
+      '<button class="btn sec sm" onclick="delSaved(\''+esc(rec.id)+'\')">Delete</button></div>'+
+      '<div class="muted small">'+esc(sub.join(" · "))+'</div>'+
+      '</div>';
+  });
+  list.innerHTML=html;
+}
+function delSaved(id){ try{ N.removeCard(id); }catch(e){} loadSaved(); }
+function clearSaved(){
+  var arr=[]; try{ arr=JSON.parse(N.listCards()||"[]"); }catch(e){}
+  if(!arr.length){ toast("Nothing to clear."); return; }
+  var b=$("clearBtn");
+  if(b.dataset.armed){ try{N.clearCards();}catch(e){} b.dataset.armed=""; b.textContent="Clear all"; b.classList.remove("danger"); loadSaved(); toast("Cleared"); }
+  else { b.dataset.armed="1"; b.textContent="Tap again to clear all"; b.classList.add("danger");
+    setTimeout(function(){ if(b){ b.dataset.armed=""; b.textContent="Clear all"; b.classList.remove("danger"); } },3000); }
+}
+function exportSaved(fmt){
+  if(!N||!N.exportText){ toast("Export needs the Tapkit app."); return; }
+  var arr=[]; try{ arr=JSON.parse(N.listCards()||"[]"); }catch(e){}
+  if(!arr.length){ toast("Nothing to export."); return; }
+  if(fmt==="csv") N.exportText("tapkit-cards.csv", toCsv(arr), "text/csv");
+  else N.exportText("tapkit-cards.txt", toTxt(arr), "text/plain");
+}
+function csvCell(v){ v=(v==null?"":""+v); return /[",\n\r]/.test(v) ? '"'+v.replace(/"/g,'""')+'"' : v; }
+function toCsv(arr){
+  var cols=["Time","Label","UID","UID bytes","Type","ATQA","SAK","Size bytes","Sectors","Technologies","Generation","Magic"];
+  var lines=[cols.join(",")];
+  arr.forEach(function(r){
+    var t=r.tag||{}, res=r.result||{}, d=t.detail||{};
+    lines.push([fmtTime(r.time), r.label||"", t.uid||"", t.uidLen||"", t.kind||"", t.atqa||"", t.sak||"",
+      d.sizeBytes||"", d.sectors||"", (t.techs||[]).join(" "), res.generation||"",
+      (res.magic===true?"yes":(res.magic===false?"no":""))].map(csvCell).join(","));
+  });
+  return lines.join("\r\n");
+}
+function toTxt(arr){
+  var out=["Tapkit — saved cards","Exported "+new Date().toLocaleString(),"Total: "+arr.length,""];
+  arr.forEach(function(r,i){
+    var t=r.tag||{}, res=r.result||{}, d=t.detail||{};
+    out.push("["+(i+1)+"] UID "+(t.uid||"?")+(r.label?"  ("+r.label+")":""));
+    out.push("    Time : "+fmtTime(r.time));
+    out.push("    Type : "+(t.kind||"?")+(t.uidLen?"   UID "+t.uidLen+" bytes":""));
+    if(t.atqa) out.push("    ATQA/SAK : "+t.atqa+" / "+t.sak);
+    if(d.sizeBytes) out.push("    Size : "+d.sizeBytes+" bytes, "+d.sectors+" sectors");
+    if(t.techs&&t.techs.length) out.push("    Tech : "+t.techs.join(", "));
+    if(res.generation) out.push("    Magic : "+res.generation+(res.uidNote?"  ("+res.uidNote+")":""));
+    if(res.records&&res.records.length){ out.push("    NDEF :"); res.records.forEach(function(rc){ out.push("        "+(rc.kind||rc.type)+": "+rc.value); }); }
+    if(res.sectors){ out.push("    Data ("+res.readableSectors+"/"+res.totalSectors+" sectors):");
+      res.sectors.forEach(function(s){ if(s.locked) out.push("        S"+s.sector+": locked");
+        else { out.push("        S"+s.sector+" (key "+s.key+" "+s.keyType+"):"); (s.blocks||[]).forEach(function(b){ out.push("            "+b); }); } }); }
+    out.push("");
+  });
+  return out.join("\n");
 }
 
 refreshState();
