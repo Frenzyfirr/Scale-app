@@ -2,7 +2,7 @@ name: Build APK
 on:
   push:
     branches: [main]
-    paths-ignore: ['sketch-to-plan/**', '.github/workflows/sketchplan.yml']
+    paths-ignore: ['sketch-to-plan/**', '.github/workflows/sketchplan.yml', 'notes-app/**', '.github/workflows/notesapp.yml']
   workflow_dispatch: {}
 permissions:
   contents: write

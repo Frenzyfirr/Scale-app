@@ -1,0 +1,112 @@
+<title>Margin Notes</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Atkinson+Hyperlegible+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: a notebook — list of notes in the margin column, the open page beside it; on phones the page slides over the list. */
+:root{
+  --bg:#eceef2; --surface:#ffffff; --ink:#1a1f29; --muted:#5d6675; --line:#d6dae2;
+  --accent:#3346a8; --accent-ink:#ffffff; --accent-soft:#e3e7fb; --mark:#ffe27a; --mark-ink:#1a1f29;
+  --danger:#b4372f; --ok:#2c7a4b; --page:#ffffff; --shade:rgba(15,18,26,.45);
+  --f-ui:"Atkinson Hyperlegible",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --f-mono:"Atkinson Hyperlegible Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+  --f-serif:Georgia,"Times New Roman",serif;
+  --r:10px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#101216; --surface:#191c22; --ink:#e6e8ec; --muted:#98a1b0; --line:#2a2f38;
+  --accent:#8fa0ff; --accent-ink:#0c1030; --accent-soft:#232a4d; --mark:#6b5a12; --mark-ink:#fff6d0;
+  --danger:#ef7d74; --ok:#62c08a; --page:#15181d; --shade:rgba(0,0,0,.6); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#101216; --surface:#191c22; --ink:#e6e8ec; --muted:#98a1b0; --line:#2a2f38;
+  --accent:#8fa0ff; --accent-ink:#0c1030; --accent-soft:#232a4d; --mark:#6b5a12; --mark-ink:#fff6d0;
+  --danger:#ef7d74; --ok:#62c08a; --page:#15181d; --shade:rgba(0,0,0,.6); color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--f-ui);margin:0;display:flex;flex-direction:column}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface)}
+h1,h2,h3{margin:0;font-weight:700;text-wrap:balance} h1{font-size:19px} h2{font-size:17px} h3{font-size:13px;text-transform:uppercase;letter-spacing:.07em;color:var(--muted)}
+p{margin:0} .muted{color:var(--muted)} .small{font-size:13px}
+button{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.b{font:600 14px var(--f-ui);border-radius:8px;padding:8px 12px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:6px;min-height:38px;white-space:nowrap}
+.b:hover{border-color:var(--muted)} .b.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)} .b.danger{color:var(--danger)}
+.b.armed{background:var(--danger);border-color:var(--danger);color:#fff} .b.sm{min-height:32px;padding:5px 10px;font-size:13px}
+.b.icon{padding:6px;min-width:38px} .b svg{width:19px;height:19px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.b[aria-pressed="true"]{background:var(--accent-soft);border-color:var(--accent)} .b:disabled{opacity:.45;cursor:default}
+.ghost{border-color:transparent;background:transparent}
+input,select,textarea{font:15px var(--f-ui);padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);width:100%;min-width:0}
+input[type=checkbox],input[type=radio]{width:18px;height:18px;accent-color:var(--accent);flex:none;padding:0}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:12.5px;color:var(--muted)}
+.chk{display:flex;gap:8px;align-items:center;cursor:pointer;font-size:14px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+header.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-bottom:1px solid var(--line)}
+header.top .in{padding-left:max(14px,env(safe-area-inset-left,0px));padding-right:max(14px,env(safe-area-inset-right,0px));padding-block:8px;display:flex;gap:8px;align-items:center}
+header.top h1{white-space:nowrap;margin-right:6px}
+.search{position:relative;flex:1;min-width:0;max-width:560px}
+.search input{padding-left:34px;background:var(--bg)}
+.search svg{position:absolute;left:10px;top:50%;transform:translateY(-50%);width:17px;height:17px;fill:none;stroke:var(--muted);stroke-width:2}
+main{flex:1;min-height:0;display:grid;grid-template-columns:360px minmax(0,1fr)}
+.listpane{min-height:0;display:flex;flex-direction:column;border-right:1px solid var(--line);background:var(--surface)}
+.listbar{padding:8px max(12px,env(safe-area-inset-left,0px)) 8px 12px;display:flex;gap:6px;align-items:center;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.listbar select{width:auto;padding:5px 8px;font-size:13px}
+.list{flex:1;min-height:0;overflow:auto;padding-bottom:calc(80px + env(safe-area-inset-bottom,0px))}
+.item{display:grid;grid-template-columns:auto minmax(0,1fr);gap:10px;padding:11px 12px 11px max(12px,env(safe-area-inset-left,0px));border-bottom:1px solid var(--line);cursor:pointer;background:none;border-left:3px solid transparent;width:100%;text-align:left}
+.item[aria-current="true"]{background:var(--accent-soft);border-left-color:var(--accent)}
+.item .t{font-weight:700;display:flex;gap:6px;align-items:center;min-width:0}
+.item .t span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.item .s{font-size:13px;color:var(--muted);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
+.item .d{font-size:12px;color:var(--muted);margin-top:2px}
+.item svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2;flex:none}
+.item input{margin-top:3px}
+mark{background:var(--mark);color:var(--mark-ink);border-radius:2px;padding:0 1px}
+.selbar{position:sticky;bottom:0;background:var(--surface);border-top:1px solid var(--line);padding:8px 12px calc(8px + env(safe-area-inset-bottom,0px));display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.fab{position:fixed;right:max(18px,env(safe-area-inset-right,0px));bottom:calc(18px + env(safe-area-inset-bottom,0px));z-index:4;border-radius:16px;min-height:52px;padding:0 18px;box-shadow:0 4px 14px rgba(0,0,0,.18)}
+.editor{min-height:0;display:flex;flex-direction:column;background:var(--page)}
+.etools{display:flex;gap:4px;align-items:center;padding:6px max(12px,env(safe-area-inset-right,0px)) 6px 12px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.etools .meta{margin-left:auto;font-size:12.5px;color:var(--muted);white-space:nowrap}
+.findbar{display:flex;gap:6px;align-items:center;padding:6px 12px;border-bottom:1px solid var(--line);background:var(--bg)}
+.findbar input{max-width:280px;padding:6px 8px}
+textarea.note{flex:1;min-height:0;border:0;border-radius:0;background:var(--page);resize:none;padding:22px max(22px,env(safe-area-inset-right,0px)) 120px max(22px,env(safe-area-inset-left,0px));font-size:16.5px;line-height:1.65;outline:none;max-width:860px;width:100%;margin:0 auto}
+textarea.note.mono{font-family:var(--f-mono);font-size:15px} textarea.note.serif{font-family:var(--f-serif);font-size:17px}
+.locked{flex:1;display:flex;align-items:center;justify-content:center;padding:24px}
+.locked .card,.lockscreen .card{max-width:380px;width:100%;display:flex;flex-direction:column;gap:12px;text-align:center}
+.lockscreen{position:fixed;inset:0;z-index:30;background:var(--bg);display:flex;align-items:center;justify-content:center;padding:24px}
+.lockscreen svg{width:44px;height:44px;margin:0 auto;fill:none;stroke:var(--accent);stroke-width:1.6}
+.empty{padding:28px 18px;text-align:center;color:var(--muted);display:flex;flex-direction:column;gap:10px;align-items:center}
+.modal{position:fixed;inset:0;z-index:20;background:var(--shade);display:flex;align-items:center;justify-content:center;padding:16px}
+.modal .card{background:var(--surface);border-radius:14px;max-width:520px;width:100%;max-height:90%;overflow:auto;padding:18px;display:flex;flex-direction:column;gap:12px}
+.toast{pointer-events:none;position:fixed;left:50%;transform:translateX(-50%);bottom:calc(84px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:14px;z-index:40;max-width:calc(100% - 32px)}
+.notice{font-size:13px;border-left:3px solid var(--accent);padding:8px 12px;background:var(--bg);border-radius:0 6px 6px 0}
+.notice.warn{border-left-color:var(--danger)}
+.opts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.opts .b{flex-direction:column;align-items:flex-start;gap:0;text-align:left;white-space:normal}
+.opts .b small{font-weight:400;font-size:12px;color:var(--muted)}
+@media (max-width:760px){
+  main{grid-template-columns:1fr}
+  .listpane{border-right:0}
+  body.editing .listpane{display:none}
+  body:not(.editing) .editor{display:none}
+  header.top h1{display:none}
+}
+@media (min-width:761px){.backbtn{display:none!important}}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+
+<header class="top"><div class="in">
+  <h1>Margin Notes</h1>
+  <div class="search"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="M20 20l-4-4"/></svg><input id="q" type="search" placeholder='Search words or "a phrase"' aria-label="Search notes" autocomplete="off"></div>
+  <button class="b icon ghost" data-act="lockApp" id="lockBtn" title="Lock now" aria-label="Lock now" hidden><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></button>
+  <button class="b icon ghost" data-act="settings" title="Settings" aria-label="Settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></svg></button>
+</div></header>
+<main>
+  <section class="listpane" aria-label="Notes">
+    <div class="listbar" id="listbar"></div>
+    <div class="list" id="list"></div>
+    <div class="selbar" id="selbar" hidden></div>
+  </section>
+  <section class="editor" id="editor" aria-label="Note"></section>
+</main>
+<button class="b primary fab" data-act="new" id="fab">+ New note</button>
+<div class="modal" id="modal" hidden><div class="card" id="modalCard" role="dialog" aria-modal="true"></div></div>
+<div class="lockscreen" id="lockscreen" hidden></div>
