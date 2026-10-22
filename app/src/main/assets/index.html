@@ -253,7 +253,7 @@ const FAT_F={measured:['Measured (scale or entered)','Uses the body fat value fr
   deurenberg91:['Deurenberg 1991','Adults, from BMI, age and sex: 1.2·BMI + 0.23·age − 10.8·sex − 5.4 (sex = 1 for men).'],
   deurenberg92:['Deurenberg 1992','Like 1991, with a separate equation for under-16s.'],
   eddy:['Eddy 1976','From BMI and sex only.'],
-  gallagherNA:['Gallagher 2000 (non-Asian)','From BMI and age; derived from DEXA data.'],
+  gallagherNA:['Gallagher 2000 (non-Asian)','From BMI, age and sex; derived from DEXA data.'],
   gallagherA:['Gallagher 2000 (Asian)','Gallagher equation calibrated for Asian adults.'],
   navy:['US Navy (tape measure)','Uses waist, neck and (women) hips measurements with height. Enter those types.'],
   caliper:['Skinfold caliper (Jackson–Pollock 3)','Uses the three caliper measurements and age.']};
@@ -402,7 +402,7 @@ function compute(m,u){
       case 'deurenberg92':fat=age>=16?1.2*bmi+0.23*age-10.8*(male?1:0)-5.4:1.294*bmi+0.20*age-11.4*(male?1:0)-8.0;
         fatEq=age>=16?`fat % = 1.2·BMI + 0.23·age − 10.8·${male?1:0} − 5.4\n      = 1.2·${B} + 0.23·${A} − ${male?10.8:0} − 5.4`:`fat % = 1.294·BMI + 0.20·age − 11.4·${male?1:0} − 8.0`;break;
       case 'eddy':fat=male?1.281*bmi-10.13:1.48*bmi-7.0;fatEq=male?`fat % = 1.281·BMI − 10.13\n      = 1.281·${B} − 10.13`:`fat % = 1.48·BMI − 7.0\n      = 1.48·${B} − 7.0`;break;
-      case 'gallagherNA':fat=64.5-848/bmi+0.079*age;fatEq=`fat % = 64.5 − 848 ÷ BMI + 0.079·age\n      = 64.5 − 848 ÷ ${B} + 0.079·${A}`;break;
+      case 'gallagherNA':{const sx=male?1:0;fat=64.5-848/bmi+0.079*age-16.4*sx+0.05*sx*age+39.0*sx/bmi;fatEq=`fat % = 64.5 − 848 ÷ BMI + 0.079·age − 16.4·sex + 0.05·sex·age + 39.0·sex ÷ BMI   (sex = ${sx})\n      = 64.5 − 848 ÷ ${B} + 0.079·${A} − ${16.4*sx} + ${0.05*sx}·${A} + ${39*sx} ÷ ${B}`;break;}
       case 'gallagherA':fat=male?51.9-740/bmi+0.029*age:64.8-752/bmi+0.016*age;fatEq=male?`fat % = 51.9 − 740 ÷ BMI + 0.029·age\n      = 51.9 − 740 ÷ ${B} + 0.029·${A}`:`fat % = 64.8 − 752 ÷ BMI + 0.016·age\n      = 64.8 − 752 ÷ ${B} + 0.016·${A}`;break;
       case 'navy':{const wa=+v.waist,ne=+v.neck,hi=+v.hips,hI=inch(H);
         if(wa>0&&ne>0&&(male?wa>ne:hi>0)){
@@ -466,7 +466,7 @@ const RANGES={
   water:(age,male)=>band(male?[[10,999,50,65]]:[[10,999,45,60]],age),
   muscle:(age,male)=>S.settings.muscleUnit==='pct'?band(male?[[18,29,37.9,46.7],[30,39,34.1,44.1],[40,49,33.1,41.1],[50,59,31.7,38.5],[60,69,29.9,37.7],[70,999,28.7,43.3]]:[[18,29,28.4,39.8],[30,39,25.0,36.2],[40,49,24.2,34.2],[50,59,24.7,33.5],[60,69,22.7,31.9],[70,999,25.5,34.9]],age):null,
   lbm:(age,male)=>band(male?[[18,24,52.9,62.7],[25,34,53.1,64.8],[35,44,53.83,65.6],[45,54,53.6,65.2],[55,64,51.63,61.1],[65,74,48.48,58.2],[75,120,43.35,60.23]]:[[18,24,34.3,41.9],[25,34,35.2,43.7],[35,44,35.6,47.1],[45,54,36.1,44.9],[55,64,35.15,43.95],[65,74,34.1,42.05],[75,120,33.8,40.4]],age),
-  bmi:(age)=>age>=19||age>=18?[0,999,18.5,25]:null,
+  bmi:(age)=>age>=18?[0,999,18.5,25]:null,
   whtr:(age)=>band([[15,40,0.4,0.5],[41,42,0.4,0.51],[43,44,0.4,0.53],[45,46,0.4,0.55],[47,48,0.4,0.57],[49,50,0.4,0.59],[51,120,0.4,0.6]],age),
   whr:(age,male)=>age>=18?(male?[0,999,0.8,0.9]:[0,999,0.7,0.8]):null,
   visc:(age)=>age>=18?[0,999,1,12]:null,
