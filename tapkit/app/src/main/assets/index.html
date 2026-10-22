@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tapkit</title>
+<style>
+:root{
+  --bg:#f3f5f4; --surface:#fff; --ink:#132019; --muted:#5a6b63; --line:#d8e0dc;
+  --accent:#0f6e5c; --accent-ink:#fff; --accent-soft:#d8efe9; --warn:#b4532f; --ok:#0f7a45;
+  --r:12px; --f:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --mono:ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0b1512; --surface:#13201b; --ink:#e7efea; --muted:#9bb0a7; --line:#24352e;
+  --accent:#4fd1b4; --accent-ink:#06211a; --accent-soft:#17352c; --warn:#f0906b; --ok:#5fcf8f; color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--f);
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left)}
+header{display:flex;align-items:center;gap:10px;padding:14px 16px;background:var(--surface);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:3}
+header h1{font-size:18px;margin:0;font-weight:800;letter-spacing:.01em}
+.dot{width:10px;height:10px;border-radius:50%;background:#bbb;flex:none}
+.dot.ready{background:var(--ok)} .dot.disabled,.dot.absent{background:var(--warn)}
+.state{font-size:12.5px;color:var(--muted);margin-left:auto;text-align:right}
+main{padding:14px 16px 40px;max-width:680px;margin:0 auto}
+.seg{display:flex;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px;margin-bottom:16px;position:sticky;top:57px;z-index:2}
+.seg button{flex:1;border:0;background:transparent;color:var(--muted);font:600 14px var(--f);padding:9px 6px;border-radius:999px;cursor:pointer}
+.seg button[aria-selected=true]{background:var(--accent);color:var(--accent-ink)}
+.panel{display:none;flex-direction:column;gap:14px}
+.panel.on{display:flex}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:16px}
+h2{font-size:15px;margin:0 0 4px}
+p{margin:0 0 2px} .muted{color:var(--muted);font-size:13.5px}
+label{display:block;font-size:12.5px;color:var(--muted);margin:10px 0 4px;font-weight:600}
+input,textarea{width:100%;font:15px var(--f);padding:11px 12px;border:1px solid var(--line);border-radius:10px;background:var(--bg);color:var(--ink)}
+input.hex{font-family:var(--mono);letter-spacing:.12em;text-transform:uppercase}
+textarea{resize:vertical;min-height:52px;font-family:var(--mono);font-size:13px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;width:100%;border:0;border-radius:10px;
+  background:var(--accent);color:var(--accent-ink);font:700 15px var(--f);padding:13px;cursor:pointer;margin-top:12px}
+.btn.sec{background:var(--accent-soft);color:var(--accent)}
+.btn:active{transform:translateY(1px)}
+.btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2}
+.chk{display:flex;align-items:center;gap:9px;margin-top:12px;font-size:13.5px;color:var(--ink)}
+.chk input{width:18px;height:18px;flex:none;accent-color:var(--accent)}
+.row{display:flex;gap:8px}.row>*{flex:1}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin:6px 0}
+.chip{font:600 11.5px var(--mono);background:var(--accent-soft);color:var(--accent);padding:3px 8px;border-radius:999px}
+.kv{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--line);font-size:14px}
+.kv:last-child{border:0} .kv .v{font-family:var(--mono);text-align:right;word-break:break-all}
+.big{font-family:var(--mono);font-size:22px;font-weight:700;letter-spacing:.08em;color:var(--accent);word-break:break-all}
+.result{margin-top:4px}
+.note{font-size:12.5px;color:var(--muted);border-left:3px solid var(--accent);padding:8px 12px;background:var(--bg);border-radius:0 8px 8px 0;margin-top:8px}
+.note.warn{border-left-color:var(--warn)}
+.ok{color:var(--ok);font-weight:700} .bad{color:var(--warn);font-weight:700}
+.sec-tbl{font-family:var(--mono);font-size:11.5px;margin-top:8px;overflow-x:auto}
+.sec-tbl .s{display:flex;gap:8px;padding:3px 0;border-bottom:1px solid var(--line);white-space:nowrap}
+.sec-tbl .s b{color:var(--accent);min-width:28px}
+.sec-tbl .lk{color:var(--muted)}
+#overlay{position:fixed;inset:0;background:rgba(8,20,16,.72);display:none;align-items:center;justify-content:center;z-index:9;padding:24px}
+#overlay.on{display:flex}
+.sheet{background:var(--surface);border-radius:18px;padding:26px 22px;max-width:320px;width:100%;text-align:center}
+.pulse{width:84px;height:84px;margin:4px auto 14px;border-radius:50%;background:var(--accent-soft);display:flex;align-items:center;justify-content:center}
+.pulse svg{width:40px;height:40px;fill:none;stroke:var(--accent);stroke-width:1.6}
+.pulse::after{content:"";position:absolute;width:84px;height:84px;border-radius:50%;border:2px solid var(--accent);animation:p 1.4s ease-out infinite;opacity:0}
+@keyframes p{0%{transform:scale(1);opacity:.6}100%{transform:scale(1.6);opacity:0}}
+.sheet h3{margin:0 0 6px;font-size:17px}
+.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%);background:var(--ink);color:var(--bg);
+  padding:11px 18px;border-radius:10px;font-size:14px;z-index:20;opacity:0;transition:.2s;pointer-events:none;max-width:90%}
+.toast.on{opacity:1}
+</style>
+</head>
+<body>
+<header>
+  <span class="dot" id="dot"></span>
+  <h1>Tapkit</h1>
+  <span class="state" id="state">checking NFC…</span>
+</header>
+
+<main>
+  <div class="seg" role="tablist">
+    <button role="tab" aria-selected="true" data-tab="scan">Scan</button>
+    <button role="tab" aria-selected="false" data-tab="uid">Write&nbsp;UID</button>
+    <button role="tab" aria-selected="false" data-tab="ndef">NDEF</button>
+  </div>
+
+  <!-- SCAN -->
+  <section class="panel on" id="p-scan">
+    <div class="card">
+      <h2>Read a tag</h2>
+      <p class="muted">Tap a card to see its UID, type, and the features your phone supports.</p>
+      <label class="chk"><input type="checkbox" id="withDump"> Also read MIFARE Classic data using known/default keys</label>
+      <button class="btn" onclick="armScan()"><svg viewBox="0 0 24 24"><path d="M4 7V5a1 1 0 0 1 1-1h2M17 4h2a1 1 0 0 1 1 1v2M20 17v2a1 1 0 0 1-1 1h-2M7 20H5a1 1 0 0 1-1-1v-2M7 12h10"/></svg>Scan a tag</button>
+    </div>
+    <div class="result" id="scanResult"></div>
+  </section>
+
+  <!-- WRITE UID -->
+  <section class="panel" id="p-uid">
+    <div class="card">
+      <h2>Write a UID to a magic card</h2>
+      <p class="muted">For UID‑changeable (“magic”, Gen2/CUID or Gen1a) cards — used to provision or replace cards in an access system you control.</p>
+      <label for="uidInput">New UID — 8 hex characters (4 bytes)</label>
+      <input id="uidInput" class="hex" maxlength="11" placeholder="DEADBEEF" autocomplete="off" autocapitalize="characters">
+      <button class="btn sec" onclick="useLast()">Use UID from last scan</button>
+      <label for="keys">Extra keys to try (optional, one 12‑hex key per line)</label>
+      <textarea id="keys" placeholder="FFFFFFFFFFFF"></textarea>
+      <button class="btn" onclick="armWriteUid()"><svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Write UID to magic card</button>
+      <div class="note warn">Only write cards you own, for a system you're authorised to manage. Tapkit does not crack unknown keys.</div>
+    </div>
+    <div class="result" id="uidResult"></div>
+  </section>
+
+  <!-- NDEF -->
+  <section class="panel" id="p-ndef">
+    <div class="card">
+      <h2>Read NDEF</h2>
+      <p class="muted">Read links, text and other NDEF data from a tag.</p>
+      <button class="btn" onclick="armReadNdef()"><svg viewBox="0 0 24 24"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>Read a tag</button>
+    </div>
+    <div class="card">
+      <h2>Write NDEF</h2>
+      <div class="row" style="margin-top:8px">
+        <button class="btn sec" id="kUrl" onclick="setKind('url')">URL</button>
+        <button class="btn sec" id="kText" onclick="setKind('text')">Text</button>
+      </div>
+      <label for="ndefVal" id="ndefLabel">Link to write</label>
+      <input id="ndefVal" placeholder="https://example.com">
+      <button class="btn" onclick="armWriteNdef()"><svg viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>Write to a tag</button>
+    </div>
+    <div class="result" id="ndefResult"></div>
+  </section>
+</main>
+
+<div id="overlay" onclick="cancelTap(event)">
+  <div class="sheet">
+    <div class="pulse"><svg viewBox="0 0 24 24"><path d="M6 8.5a8 8 0 0 1 0 7M9.5 6a12 12 0 0 1 0 12M3 11a4 4 0 0 1 0 2"/><circle cx="18" cy="12" r="1.5" fill="currentColor" stroke="none"/></svg></div>
+    <h3 id="tapTitle">Hold the card to your phone</h3>
+    <p class="muted" id="tapMsg">Keep it still against the back until it reads.</p>
+    <button class="btn sec" style="margin-top:18px" onclick="cancelTap()">Cancel</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+var N = window.Native || null;
+var lastUid = "";
+var ndefKind = "url";
+var armed = null;
+
+function $(id){return document.getElementById(id)}
+function toast(m){var t=$("toast");t.textContent=m;t.classList.add("on");setTimeout(function(){t.classList.remove("on")},2400)}
+
+// tabs
+document.querySelectorAll(".seg button").forEach(function(b){
+  b.onclick=function(){
+    document.querySelectorAll(".seg button").forEach(function(x){x.setAttribute("aria-selected",x===b)});
+    document.querySelectorAll(".panel").forEach(function(p){p.classList.remove("on")});
+    $("p-"+b.dataset.tab).classList.add("on");
+  };
+});
+
+function state(s){
+  var dot=$("dot"), lbl=$("state");
+  dot.className="dot "+s;
+  lbl.textContent = s==="ready" ? "NFC ready" : s==="disabled" ? "Turn on NFC in Settings" : "No NFC on this phone";
+}
+window.onNfcState=state;
+
+function refreshState(){ try{ if(N&&N.getState) state(N.getState()); }catch(e){} }
+
+// arm an operation, then show the tap overlay
+function arm(op, title, msg){
+  if(!N){ toast("Run this inside the Tapkit app."); return; }
+  try{ N.setOp(JSON.stringify(op)); }catch(e){ toast("Could not arm: "+e); return; }
+  armed = op.op;
+  $("tapTitle").textContent = title || "Hold the card to your phone";
+  $("tapMsg").textContent = msg || "Keep it still against the back until it reads.";
+  $("overlay").classList.add("on");
+}
+function cancelTap(e){
+  if(e && e.target && e.target.id!=="overlay" && e.target.className!=="btn sec") return;
+  $("overlay").classList.remove("on");
+  armed=null;
+  try{ N && N.setOp(JSON.stringify({op:"scan"})); }catch(_){}
+}
+
+function keyLines(){
+  return ($("keys").value||"").split("\n").map(function(s){return s.replace(/[^0-9a-fA-F]/g,"")}).filter(function(s){return s.length});
+}
+
+// ---- actions
+function armScan(){ arm($("withDump").checked ? {op:"dump"} : {op:"scan"}, "Hold the card to your phone", "Reading…"); }
+function armWriteUid(){
+  var uid=($("uidInput").value||"").replace(/[^0-9a-fA-F]/g,"");
+  if(uid.length!==8){ toast("Enter exactly 8 hex characters."); return; }
+  arm({op:"writeUid", uid:uid, keys:keyLines()}, "Tap the magic card to write", "Writing UID "+uid.toUpperCase()+"…");
+}
+function armReadNdef(){ arm({op:"readNdef"}, "Hold the tag to your phone", "Reading NDEF…"); }
+function armWriteNdef(){
+  var v=($("ndefVal").value||"").trim();
+  if(!v){ toast("Enter a value to write."); return; }
+  arm({op:"writeNdef", kind:ndefKind, value:v}, "Tap the tag to write", "Writing…");
+}
+function useLast(){ if(lastUid){ $("uidInput").value=lastUid; toast("Filled "+lastUid); } else toast("Scan a card first (Scan tab)."); }
+function setKind(k){
+  ndefKind=k;
+  $("kUrl").className="btn "+(k==="url"?"":"sec");
+  $("kText").className="btn "+(k==="text"?"":"sec");
+  $("ndefLabel").textContent = k==="url" ? "Link to write" : "Text to write";
+  $("ndefVal").placeholder = k==="url" ? "https://example.com" : "Hello from Tapkit";
+}
+setKind("url");
+
+// ---- results from native
+window.onNfcResult=function(res){
+  $("overlay").classList.remove("on");
+  if(navigator.vibrate) try{navigator.vibrate(40)}catch(_){}
+  var tag = res.tag||{};
+  if(tag.uid) lastUid = tag.uid;
+  if(res.op==="scan"||res.op==="dump") renderScan(res);
+  else if(res.op==="writeUid") renderWriteUid(res);
+  else if(res.op==="readNdef") renderNdef(res);
+  else if(res.op==="writeNdef") renderWriteNdef(res);
+  armed=null;
+};
+
+function esc(s){return (s==null?"":""+s).replace(/[&<>]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;"}[c]})}
+
+function tagCard(tag){
+  var chips=(tag.techs||[]).map(function(t){return '<span class="chip">'+esc(t)+'</span>'}).join("");
+  var d=tag.detail||{};
+  var extra="";
+  if(d.sizeBytes){ extra='<div class="kv"><span>Size</span><span class="v">'+d.sizeBytes+' bytes · '+d.sectors+' sectors</span></div>'; }
+  return '<div class="card">'+
+    '<p class="muted">UID</p><div class="big">'+esc(tag.uid||"?")+'</div>'+
+    '<div class="kv"><span>Type</span><span class="v">'+esc(tag.kind||"?")+'</span></div>'+
+    (tag.atqa?'<div class="kv"><span>ATQA / SAK</span><span class="v">'+esc(tag.atqa)+' / '+esc(tag.sak)+'</span></div>':'')+
+    extra+
+    '<p class="muted" style="margin-top:8px">Supported by this phone:</p><div class="chips">'+chips+'</div>'+
+    '</div>';
+}
+
+function renderScan(res){
+  var tag=res.tag||{}, html=tagCard(tag);
+  var r=res.result;
+  if(r){
+    if(r.ok){
+      html+='<div class="card"><h2>Data ('+r.readableSectors+'/'+r.totalSectors+' sectors readable)</h2><div class="sec-tbl">';
+      (r.sectors||[]).forEach(function(s){
+        if(s.locked){ html+='<div class="s"><b>S'+s.sector+'</b><span class="lk">locked — no known key</span></div>'; }
+        else { html+='<div class="s"><b>S'+s.sector+'</b><span>key '+esc(s.key)+esc(s.keyType)+'</span></div>';
+          (s.blocks||[]).forEach(function(bl){ html+='<div class="s"><b></b><span>'+esc(bl)+'</span></div>'; }); }
+      });
+      html+='</div>';
+      if(r.readableSectors<r.totalSectors) html+='<div class="note">Locked sectors use keys Tapkit doesn\'t know. Add them under Write&nbsp;UID → extra keys if it\'s your card.</div>';
+      html+='</div>';
+    } else html+='<div class="card"><span class="bad">Couldn\'t read data.</span><p class="muted">'+esc(r.error)+'</p></div>';
+  }
+  if(tag.kind && tag.kind.indexOf("MIFARE Classic")<0)
+    html+='<div class="note">This tag isn\'t MIFARE Classic, so sector data and magic‑UID writing don\'t apply to it.</div>';
+  $("scanResult").innerHTML=html;
+}
+
+function renderWriteUid(res){
+  var r=res.result||{};
+  var html;
+  if(r.ok) html='<div class="card"><span class="ok">UID changed ✓</span>'+
+    '<div class="kv"><span>New UID</span><span class="v">'+esc(r.uid)+'</span></div>'+
+    '<div class="kv"><span>Method</span><span class="v">'+esc(r.method)+'</span></div>'+
+    '<p class="muted" style="margin-top:8px">Scan it on the Scan tab to confirm.</p></div>';
+  else html='<div class="card"><span class="bad">Could not change the UID</span><p class="muted" style="margin-top:6px">'+esc(r.error)+'</p>'+
+    '<div class="note">Most likely this isn\'t a magic/UID‑changeable card, or this phone\'s NFC chip can\'t send the low‑level commands. Try a Gen2/CUID card, or check with MIFARE Classic Tool whether your phone supports it.</div></div>';
+  $("uidResult").innerHTML=html;
+}
+
+function renderNdef(res){
+  var r=res.result||{}, html=tagCard(res.tag||{});
+  if(r.ok){
+    if(r.empty && !(r.records&&r.records.length)) html+='<div class="card"><p class="muted">No NDEF data on this tag'+(r.formatable?' (blank, ready to write)':'')+'.</p></div>';
+    else{
+      html+='<div class="card"><h2>NDEF records</h2>';
+      (r.records||[]).forEach(function(rec){
+        html+='<div class="kv"><span>'+esc(rec.kind||rec.type)+'</span><span class="v">'+esc(rec.value)+'</span></div>';
+      });
+      html+='<p class="muted" style="margin-top:8px">'+(r.writable?'Writable':'Read‑only')+' · up to '+esc(r.maxSize)+' bytes</p></div>';
+    }
+  } else html+='<div class="card"><span class="bad">'+esc(r.error)+'</span></div>';
+  $("ndefResult").innerHTML=html;
+}
+function renderWriteNdef(res){
+  var r=res.result||{};
+  $("ndefResult").innerHTML = r.ok
+    ? '<div class="card"><span class="ok">Written ✓</span><p class="muted">'+esc(r.method)+'</p></div>'
+    : '<div class="card"><span class="bad">Write failed</span><p class="muted">'+esc(r.error)+'</p></div>';
+}
+
+refreshState();
+setInterval(refreshState, 2500);
+</script>
+</body>
+</html>
