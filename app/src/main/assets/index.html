@@ -1,0 +1,1201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>VScale Offline</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="theme-color" content="#0f6970">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Share+Tech+Mono&display=swap">
+<style>
+/* Layout: phone app — sticky header, one scrolling column, fixed bottom tab bar; the scale's LCD readout leads the home view. */
+:root{
+  --bg:#edf1f2; --surface:#ffffff; --ink:#16232a; --muted:#5a6b73; --line:#d2dadd;
+  --accent:#0f6970; --accent-ink:#ffffff; --accent-soft:#dcecec;
+  --lcd-bg:#14211f; --lcd-ink:#d6f4ee; --lcd-dim:#6f948d;
+  --ok:#2c7a4b; --warn:#a8650c; --bad:#b33a3a; --shade:rgba(10,20,24,.45);
+  --f-ui:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --f-mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;
+  --f-lcd:"Share Tech Mono","IBM Plex Mono",ui-monospace,monospace;
+  --r:10px;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#0e1417; --surface:#162026; --ink:#e2eaed; --muted:#93a4ab; --line:#27353b;
+  --accent:#4fb0b5; --accent-ink:#06191b; --accent-soft:#1c3336;
+  --lcd-bg:#071110; --lcd-ink:#c9f2ea; --lcd-dim:#5d8580;
+  --ok:#5fbf86; --warn:#e0a24a; --bad:#e57373; --shade:rgba(0,0,0,.6); color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#0e1417; --surface:#162026; --ink:#e2eaed; --muted:#93a4ab; --line:#27353b;
+  --accent:#4fb0b5; --accent-ink:#06191b; --accent-soft:#1c3336;
+  --lcd-bg:#071110; --lcd-ink:#c9f2ea; --lcd-dim:#5d8580;
+  --ok:#5fbf86; --warn:#e0a24a; --bad:#e57373; --shade:rgba(0,0,0,.6); color-scheme:dark}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{min-height:100%}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--f-ui);margin:0}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--surface)}
+h1,h2,h3{margin:0;text-wrap:balance;font-weight:600}
+h1{font-size:17px} h2{font-size:16px} h3{font-size:14px}
+p{margin:0}
+.muted{color:var(--muted)} .small{font-size:13px} .tiny{font-size:12px}
+.mono{font-family:var(--f-mono);font-size:13px}
+.num{font-variant-numeric:tabular-nums}
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--surface);border-bottom:1px solid var(--line)}
+.top .in{max-width:760px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.top select{width:auto;max-width:48vw;padding:6px 8px;font-size:14px}
+.status{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);margin-left:auto}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--line);flex:none}
+.dot.on{background:var(--ok)} .dot.busy{background:var(--warn)}
+main{max-width:760px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:16px calc(90px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:14px}
+section.view{display:flex;flex-direction:column;gap:14px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:14px;display:flex;flex-direction:column;gap:12px;min-width:0}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.between{justify-content:space-between}
+.grid2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.grid3{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+@media (max-width:440px){.grid2,.grid3{grid-template-columns:1fr}}
+/* LCD */
+.lcd{background:var(--lcd-bg);color:var(--lcd-ink);border-radius:14px;padding:16px 16px 12px;display:flex;flex-direction:column;gap:8px}
+.lcd .big{font-family:var(--f-lcd);font-size:58px;line-height:1;font-variant-numeric:tabular-nums;display:flex;align-items:baseline;gap:8px}
+.lcd .big small{font-size:18px;color:var(--lcd-dim)}
+.lcd .r{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-family:var(--f-lcd);font-size:15px;color:var(--lcd-dim)}
+.lcd .r b{color:var(--lcd-ink);font-weight:400}
+.lcd .msg{font:13px/1.4 var(--f-ui);color:var(--lcd-dim)}
+.lcd .msg.err{color:#f2a3a3}
+/* controls */
+button{font:inherit}
+.b{font:500 14px var(--f-ui);border-radius:8px;padding:9px 13px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.b.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.b.ghost{border-color:transparent;background:transparent;color:var(--accent);padding-inline:6px}
+.b.danger{color:var(--bad)}
+.b.armed{background:var(--bad);border-color:var(--bad);color:#fff}
+.b.sm{padding:6px 10px;font-size:13px}
+.b:disabled{opacity:.45;cursor:default}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);min-width:0}
+input,select,textarea{font:15px var(--f-ui);padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--ink);width:100%;min-width:0}
+textarea{min-height:64px;resize:vertical}
+input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent);padding:0;flex:none}
+input[type=color]{padding:2px;height:34px;width:46px}
+.chk{display:flex;align-items:center;gap:8px;font-size:14px;color:var(--ink);cursor:pointer}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{font:500 13px var(--f-ui);border:1px solid var(--line);background:var(--surface);color:var(--muted);border-radius:99px;padding:5px 11px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.chip[aria-pressed="true"]{background:var(--accent-soft);color:var(--ink);border-color:var(--accent)}
+.chip i{width:9px;height:9px;border-radius:50%;display:inline-block}
+.tag{display:inline-block;font-size:11px;letter-spacing:.05em;text-transform:uppercase;border-radius:99px;padding:1px 8px;border:1px solid currentColor;color:var(--muted);white-space:nowrap}
+.tag.low{color:var(--warn)} .tag.normal{color:var(--ok)} .tag.high{color:var(--bad)}
+/* metric tiles */
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:8px}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:10px 12px;display:flex;flex-direction:column;gap:3px;text-align:left;color:inherit;cursor:pointer;min-width:0}
+.tile .n{font-size:12px;color:var(--muted);display:flex;justify-content:space-between;gap:6px}
+.tile .v{font-family:var(--f-mono);font-size:19px;font-variant-numeric:tabular-nums}
+.tile .v small{font-size:12px;color:var(--muted);margin-left:3px}
+.tile .d{font-size:12px;font-family:var(--f-mono);color:var(--muted)}
+.gauge{position:relative;height:6px;border-radius:3px;background:var(--line);margin-top:4px}
+.gauge .ok{position:absolute;top:0;bottom:0;background:var(--ok);opacity:.45;border-radius:3px}
+.gauge .mk{position:absolute;top:-3px;width:3px;height:12px;background:var(--ink);border-radius:2px;transform:translateX(-50%)}
+/* lists */
+.list{display:flex;flex-direction:column}
+.li{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:center;padding:10px 0;border-top:1px solid var(--line);background:none;border-left:0;border-right:0;border-bottom:0;color:inherit;text-align:left;width:100%;cursor:pointer}
+.li:first-child{border-top:0}
+.kv{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;font-size:14px}
+.kv .k{color:var(--muted)}
+.kv .v{font-family:var(--f-mono);text-align:right;font-variant-numeric:tabular-nums}
+details.m{border-top:1px solid var(--line)}
+details.m:first-of-type{border-top:0}
+details.m>summary{list-style:none;display:grid;grid-template-columns:minmax(0,1fr) auto 14px;gap:10px;align-items:center;padding:9px 0;cursor:pointer}
+details.m>summary::-webkit-details-marker{display:none}
+details.m>summary::after{content:"+";color:var(--muted);font-family:var(--f-mono);text-align:right}
+details.m[open]>summary::after{content:"−"}
+.mname{display:flex;flex-direction:column;min-width:0}
+.mname .src{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+.mval{font-family:var(--f-mono);font-size:15px;text-align:right;font-variant-numeric:tabular-nums;display:flex;flex-direction:column;align-items:flex-end;gap:2px}
+.mval small{color:var(--muted);font-size:12px}
+.how{padding:0 0 12px;display:flex;flex-direction:column;gap:6px;font-size:13px}
+.eq{font-family:var(--f-mono);font-size:12.5px;background:var(--bg);border-radius:6px;padding:8px 10px;overflow-x:auto;white-space:pre;margin:0}
+details.sec{background:var(--surface);border:1px solid var(--line);border-radius:var(--r)}
+details.sec>summary{list-style:none;padding:13px 14px;cursor:pointer;display:flex;justify-content:space-between;gap:10px;font-weight:600}
+details.sec>summary::-webkit-details-marker{display:none}
+details.sec>summary::after{content:"›";color:var(--muted);transition:transform .15s}
+details.sec[open]>summary::after{transform:rotate(90deg)}
+details.sec>.body{padding:0 14px 14px;display:flex;flex-direction:column;gap:12px}
+/* tables */
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table{border-collapse:collapse;width:100%;font-size:13px}
+th,td{text-align:left;padding:7px 8px;border-bottom:1px solid var(--line);vertical-align:middle;white-space:nowrap}
+th{font-weight:500;color:var(--muted);font-size:12px;position:sticky;top:0;background:var(--surface)}
+td.n,th.n{text-align:right;font-family:var(--f-mono);font-variant-numeric:tabular-nums}
+tr.sel td{background:var(--accent-soft)}
+tbody tr{cursor:pointer}
+/* charts */
+.chart{display:flex;flex-direction:column;gap:4px}
+.chart svg{width:100%;height:auto;display:block;touch-action:pan-y}
+.chart .cap{display:flex;justify-content:space-between;gap:8px;font-size:13px;flex-wrap:wrap}
+.chart .tip{font-family:var(--f-mono);font-size:12px;color:var(--muted);min-height:1.4em}
+.bars{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;align-items:end;height:90px}
+.bars div{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:3px;height:100%;font-size:11px;color:var(--muted)}
+.bars span.bar{width:100%;border-radius:4px 4px 0 0;background:var(--accent);opacity:.75}
+.notice{font-size:13px;border-left:3px solid var(--warn);padding:8px 12px;background:var(--bg);border-radius:0 6px 6px 0}
+.notice.info{border-left-color:var(--accent)}
+pre.log{font:12px/1.45 var(--f-mono);background:var(--bg);border-radius:6px;padding:10px;max-height:240px;overflow:auto;margin:0;white-space:pre-wrap;word-break:break-all}
+/* bottom nav */
+nav.tabs{position:fixed;left:0;right:0;bottom:0;z-index:6;background:var(--surface);border-top:1px solid var(--line);padding-bottom:env(safe-area-inset-bottom,0px);padding-left:env(safe-area-inset-left,0px);padding-right:env(safe-area-inset-right,0px)}
+nav.tabs .in{max-width:760px;margin:0 auto;display:grid;grid-template-columns:repeat(6,1fr)}
+nav.tabs button{border:0;background:transparent;color:var(--muted);font:500 11.5px var(--f-ui);padding:8px 2px 9px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:3px}
+nav.tabs button svg{width:22px;height:22px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+nav.tabs button[aria-selected="true"]{color:var(--accent)}
+/* modal */
+.modal{position:fixed;inset:0;z-index:20;background:var(--shade);display:flex;align-items:flex-end;justify-content:center;padding-top:calc(24px + env(safe-area-inset-top,0px))}
+.sheet{background:var(--bg);width:100%;max-width:760px;max-height:100%;overflow:auto;border-radius:16px 16px 0 0;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:0 calc(20px + env(safe-area-inset-bottom,0px));display:flex;flex-direction:column;gap:14px}
+.sheet .hd{position:sticky;top:0;background:var(--bg);display:flex;justify-content:space-between;align-items:center;gap:10px;padding-block:14px 6px;z-index:1}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(80px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 16px;border-radius:8px;font-size:14px;z-index:30;max-width:calc(100% - 32px)}
+.empty{text-align:center;padding:22px 8px;color:var(--muted);font-size:14px;display:flex;flex-direction:column;gap:10px;align-items:center}
+@media (prefers-reduced-motion:reduce){*{transition:none!important}}
+</style>
+</head>
+<body>
+
+<header class="top"><div class="in">
+  <h1>VScale Offline</h1>
+  <select id="userSel" aria-label="Active profile"></select>
+  <span class="status"><span class="dot" id="dot"></span><span id="statusText">Not connected</span></span>
+</div></header>
+
+<main>
+  <section class="view" id="v-home"></section>
+  <section class="view" id="v-graph" hidden></section>
+  <section class="view" id="v-table" hidden></section>
+  <section class="view" id="v-stats" hidden></section>
+  <section class="view" id="v-insights" hidden></section>
+  <section class="view" id="v-settings" hidden></section>
+</main>
+
+<nav class="tabs" aria-label="Sections"><div class="in" role="tablist">
+  <button role="tab" data-tab="home" aria-selected="true"><svg viewBox="0 0 24 24"><rect x="4" y="4" width="16" height="16" rx="3"/><rect x="8" y="7" width="8" height="4" rx="1"/><circle cx="9" cy="16" r="1"/><circle cx="15" cy="16" r="1"/></svg>Scale</button>
+  <button role="tab" data-tab="graph" aria-selected="false"><svg viewBox="0 0 24 24"><path d="M4 19h16M5 15l4-5 4 3 6-7"/></svg>Graph</button>
+  <button role="tab" data-tab="table" aria-selected="false"><svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="2"/><path d="M4 10h16M4 14.5h16M10 5v14"/></svg>Table</button>
+  <button role="tab" data-tab="stats" aria-selected="false"><svg viewBox="0 0 24 24"><path d="M6 19V11M12 19V5M18 19v-6"/></svg>Stats</button>
+  <button role="tab" data-tab="insights" aria-selected="false"><svg viewBox="0 0 24 24"><path d="M12 3a6 6 0 0 0-3.5 10.9V16h7v-2.1A6 6 0 0 0 12 3zM9.5 19h5M10.5 21.5h3"/></svg>Insights</button>
+  <button role="tab" data-tab="settings" aria-selected="false"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M2.5 12h3M18.5 12h3M5.3 5.3l2.1 2.1M16.6 16.6l2.1 2.1M5.3 18.7l2.1-2.1M16.6 7.4l2.1-2.1"/></svg>Settings</button>
+</div></nav>
+
+<div class="modal" id="modal" hidden><div class="sheet" id="sheet" role="dialog" aria-modal="true"></div></div>
+
+<script>
+(() => {
+'use strict';
+// =====================================================================
+// Basics
+// =====================================================================
+const VERSION='0.4';
+const SVC='f433bd80-75b8-11e2-97d9-0002a5d5c51b', SVC2='78667579-7b48-43db-b8c5-7928a6b0a335';
+const CH_RES='1a2ea400-75b9-11e2-be05-0002a5d5c51b', CH_AUX='23b4fec0-75b9-11e2-972a-0002a5d5c51b', CH_CMD='29f11080-75b9-11e2-8bf6-0002a5d5c51b';
+const KEY='vscale-offline-v2', KEY_OLD='vscale-offline-v1';
+const NATIVE=window.AndroidBle||null;
+let IN_PREVIEW=false; try{IN_PREVIEW=!NATIVE&&window.top!==window;}catch(e){IN_PREVIEW=!NATIVE;}
+const $=id=>document.getElementById(id);
+const esc=s=>String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const hex=b=>Array.from(b,x=>x.toString(16).padStart(2,'0').toUpperCase()).join(' ');
+const fromHex=s=>new Uint8Array(String(s).trim().split(/[\s-]+/).filter(Boolean).map(x=>parseInt(x,16)));
+const fx=(n,d=1)=>(n==null||!isFinite(n))?'–':(Math.round(n*10**d)/10**d).toFixed(d);
+const f1=n=>fx(n,1), f2=n=>fx(n,2);
+const DAY=864e5;
+const uid=p=>p+Date.now().toString(36)+Math.random().toString(36).slice(2,6);
+const clamp=(v,a,b)=>Math.min(b,Math.max(a,v));
+const fmtDate=t=>new Date(t).toLocaleDateString([], {day:'numeric',month:'short',year:'numeric'});
+const fmtDT=t=>new Date(t).toLocaleString([], {day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+const fmtShort=t=>new Date(t).toLocaleDateString([], {day:'numeric',month:'short'});
+const localInput=t=>{const d=new Date(t);d.setMinutes(d.getMinutes()-d.getTimezoneOffset());return d.toISOString().slice(0,16);};
+const WEEKDAYS=['Mon','Tue','Wed','Thu','Fri','Sat','Sun'];
+const MONTHS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+// =====================================================================
+// Measurement types
+// kind: mass | len | mm | pct | kcal | bpm | ohm | none | muscle | text | custom
+// =====================================================================
+const BUILTIN=[
+  {k:'weight',n:'Weight',kind:'mass',d:1,input:1,on:1,c:'#0f6970'},
+  {k:'bmi',n:'BMI',kind:'none',d:1,der:1,on:1,c:'#7a5ea8'},
+  {k:'fat',n:'Body fat',kind:'pct',d:1,input:1,on:1,c:'#c4572a'},
+  {k:'water',n:'Body water',kind:'pct',d:1,input:1,on:1,c:'#2a7fc4'},
+  {k:'muscle',n:'Muscle',kind:'muscle',d:1,input:1,on:1,c:'#2c7a4b'},
+  {k:'lbm',n:'Lean body mass',kind:'mass',d:1,der:1,on:1,c:'#5b8f2a'},
+  {k:'fatMass',n:'Fat mass',kind:'mass',d:1,der:1,on:0,c:'#b4693a'},
+  {k:'bone',n:'Bone mass',kind:'mass',d:1,input:1,on:1,c:'#8a7a5c'},
+  {k:'visc',n:'Visceral fat',kind:'none',d:0,input:1,on:1,c:'#a3456b'},
+  {k:'scaleKcal',n:'Calories (scale)',kind:'kcal',d:0,input:1,on:1,c:'#b08a1e'},
+  {k:'bmr',n:'BMR',kind:'kcal',d:0,der:1,on:1,c:'#c99a2e'},
+  {k:'tdee',n:'TDEE',kind:'kcal',d:0,der:1,on:0,c:'#d07b2a'},
+  {k:'waist',n:'Waist',kind:'len',d:1,input:1,on:0,c:'#3c6e91'},
+  {k:'hips',n:'Hips',kind:'len',d:1,input:1,on:0,c:'#5a7f9e'},
+  {k:'chest',n:'Chest',kind:'len',d:1,input:1,on:0,c:'#6b6fa8'},
+  {k:'thigh',n:'Thigh',kind:'len',d:1,input:1,on:0,c:'#8a6ea0'},
+  {k:'biceps',n:'Biceps',kind:'len',d:1,input:1,on:0,c:'#9e6a85'},
+  {k:'neck',n:'Neck',kind:'len',d:1,input:1,on:0,c:'#7d7d7d'},
+  {k:'whr',n:'Waist-hip ratio',kind:'none',d:2,der:1,on:0,c:'#3e8a86'},
+  {k:'whtr',n:'Waist-height ratio',kind:'none',d:2,der:1,on:0,c:'#4a9a6a'},
+  {k:'cal1',n:'Caliper 1 (chest / triceps)',kind:'mm',d:1,input:1,on:0,c:'#a07a3c'},
+  {k:'cal2',n:'Caliper 2 (abdomen / suprailiac)',kind:'mm',d:1,input:1,on:0,c:'#a0863c'},
+  {k:'cal3',n:'Caliper 3 (thigh)',kind:'mm',d:1,input:1,on:0,c:'#a0923c'},
+  {k:'calFat',n:'Body fat (caliper)',kind:'pct',d:1,der:1,on:0,c:'#c4752a'},
+  {k:'hr',n:'Heart rate',kind:'bpm',d:0,input:1,on:0,c:'#c43a5a'},
+  {k:'imp',n:'Impedance',kind:'ohm',d:0,input:1,on:0,c:'#5a5ac4'},
+  {k:'comment',n:'Comment',kind:'text',input:1,on:1,c:'#7d7d7d'}
+];
+const ACTIVITY=[['Sedentary',1.2],['Light activity',1.375],['Moderate activity',1.55],['Heavy activity',1.725],['Extreme activity',1.9]];
+const LIMBS=[['la','Left arm',[['hand','Hand',0.8],['forearm','Forearm',3.0],['arm','Full arm',11.5]]],
+             ['ra','Right arm',[['hand','Hand',0.8],['forearm','Forearm',3.0],['arm','Full arm',11.5]]],
+             ['ll','Left leg',[['foot','Foot',1.8],['lower','Lower leg',7.1],['leg','Full leg',18.6]]],
+             ['rl','Right leg',[['foot','Foot',1.8],['lower','Lower leg',7.1],['leg','Full leg',18.6]]]];
+const FAT_F={measured:['Measured (scale or entered)','Uses the body fat value from the scale or your own entry.'],
+  deurenberg91:['Deurenberg 1991','Adults, from BMI, age and sex: 1.2·BMI + 0.23·age − 10.8·sex − 5.4 (sex = 1 for men).'],
+  deurenberg92:['Deurenberg 1992','Like 1991, with a separate equation for under-16s.'],
+  eddy:['Eddy 1976','From BMI and sex only.'],
+  gallagherNA:['Gallagher 2000 (non-Asian)','From BMI and age; derived from DEXA data.'],
+  gallagherA:['Gallagher 2000 (Asian)','Gallagher equation calibrated for Asian adults.'],
+  navy:['US Navy (tape measure)','Uses waist, neck and (women) hips measurements with height. Enter those types.'],
+  caliper:['Skinfold caliper (Jackson–Pollock 3)','Uses the three caliper measurements and age.']};
+const WATER_F={measured:['Measured (scale or entered)','Uses the water value from the scale or your own entry.'],
+  behnke:['Behnke 1963','Total body water from height and sex.'],
+  delwaide:['Delwaide–Crenier 1973','Total body water from weight.'],
+  humeWeyers:['Hume–Weyers 1971','Total body water from height, weight and sex.'],
+  leeSongKim:['Lee–Song–Kim 2001','Total body water from height, weight and sex.']};
+const LBM_F={wmf:['Weight minus body fat','Lean mass = weight × (1 − body fat ÷ 100).'],
+  boer:['Boer 1984','From weight, height and sex.'],
+  hume:['Hume 1966','From weight, height and sex.']};
+
+// =====================================================================
+// State
+// =====================================================================
+function blankUser(name){return {id:uid('u'),name:name||'Me',sex:0,birth:'1990-01-01',height:175,slot:1,activity:1,goals:[],amp:{}};}
+function defaultSettings(){return {
+  write:'response',muscleUnit:'pct',units:{weight:'kg',length:'cm'},
+  formulas:{fat:'measured',water:'measured',lbm:'wmf'},
+  types:Object.fromEntries(BUILTIN.map(t=>[t.k,{on:!!t.on,c:t.c}])),custom:[],
+  chart:{points:true,goals:true,smoothing:'none',window:5,alpha:0.3,maxGap:30,projection:false,projBasis:60,projDays:30,projDegree:1},
+  reminder:{on:false,time:'07:30',days:[1,2,3,4,5,6,7],text:'Time to weigh yourself'},
+  backup:{on:false,folder:'',mode:'overwrite'},
+  smartAssign:false,haptics:true,theme:'system'};}
+function defaults(){const u=blankUser('Me');return {v:2,users:[u],activeId:u.id,ms:[],settings:defaultSettings(),ui:{range:'90',metrics:['weight','fat'],statRange:'30',insMetric:'weight'}};}
+
+function decodeRaw(raw){const f=parseFrame(fromHex(raw));if(f.weightOnly||f.failed)return {weight:f.w};
+  return {weight:f.w,fat:f.fat,water:f.water,bone:f.bone,muscle:f.muscle,visc:f.visc,scaleKcal:f.kcal};}
+function migrate(old){
+  const S=defaults();S.users=[];S.ms=[];
+  (old.profiles||[]).forEach(p=>S.users.push({id:p.id,name:p.name,sex:+p.sex||0,birth:p.birth||'1990-01-01',height:+p.height||175,slot:+p.slot||1,activity:1,goals:[],amp:{}}));
+  if(!S.users.length)S.users.push(blankUser('Me'));
+  S.activeId=old.activeId&&S.users.some(u=>u.id===old.activeId)?old.activeId:S.users[0].id;
+  (old.measurements||[]).forEach(m=>S.ms.push({id:m.id,userId:m.profileId,t:new Date(m.t).toISOString(),raw:m.raw,v:decodeRaw(m.raw),src:'scale',sample:!!m.sample}));
+  if(old.settings){S.settings.write=old.settings.write||'response';S.settings.muscleUnit=old.settings.muscle==='kg'?'kg':'pct';}
+  return S;
+}
+function fill(S){ // make older or partial states complete
+  const d=defaults();S.settings=Object.assign(d.settings,S.settings||{});
+  for(const k of ['units','formulas','chart','reminder','backup'])S.settings[k]=Object.assign(defaultSettings()[k],S.settings[k]||{});
+  const dt=defaultSettings().types;S.settings.types=Object.assign(dt,S.settings.types||{});
+  S.settings.custom=S.settings.custom||[];S.ui=Object.assign(d.ui,S.ui||{});S.ms=S.ms||[];
+  S.users.forEach(u=>{u.goals=u.goals||[];u.amp=u.amp||{};if(u.activity==null)u.activity=1;});
+  return S;
+}
+let S;
+function load(){
+  try{const s=localStorage.getItem(KEY);if(s){S=fill(JSON.parse(s));return;}}catch(e){}
+  try{const o=localStorage.getItem(KEY_OLD);if(o){S=fill(migrate(JSON.parse(o)));return;}}catch(e){}
+  S=defaults();
+  if(IN_PREVIEW)addExampleData(true);
+}
+let backupTimer=null;
+function save(){
+  try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}
+  if(NATIVE&&S.settings.backup.on&&S.settings.backup.folder&&NATIVE.writeBackup){
+    clearTimeout(backupTimer);
+    backupTimer=setTimeout(()=>{try{const day=new Date().toISOString().slice(0,10);
+      const name=S.settings.backup.mode==='overwrite'?'vscale-backup.json':`vscale-backup-${day}.json`;
+      NATIVE.writeBackup(name,JSON.stringify(S),true);}catch(e){}},4000);
+  }
+}
+
+// ---------- types helpers ----------
+function allTypes(){return BUILTIN.concat(S.settings.custom.map(c=>({k:c.k,n:c.n,kind:'custom',unit:c.unit,d:+c.d||1,input:1,custom:1,c:'#6b6b6b'})));}
+const typeOf=k=>allTypes().find(t=>t.k===k);
+const isOn=k=>!!(S.settings.types[k]&&S.settings.types[k].on);
+const colorOf=k=>(S.settings.types[k]&&S.settings.types[k].c)||(typeOf(k)||{}).c||'#0f6970';
+const enabledTypes=()=>allTypes().filter(t=>isOn(t.k));
+const numericEnabled=()=>enabledTypes().filter(t=>t.kind!=='text');
+
+// ---------- units ----------
+function unitOf(t){
+  const U=S.settings.units;
+  switch(t.kind){
+    case 'mass':return U.weight; case 'len':return U.length==='in'?'in':'cm'; case 'mm':return 'mm';
+    case 'pct':return '%'; case 'kcal':return 'kcal'; case 'bpm':return 'bpm'; case 'ohm':return 'Ω';
+    case 'muscle':return S.settings.muscleUnit==='kg'?U.weight:'%'; case 'custom':return t.unit||''; default:return '';
+  }
+}
+function toDisp(t,v){ if(v==null)return null;
+  const U=S.settings.units; const mass=t.kind==='mass'||(t.kind==='muscle'&&S.settings.muscleUnit==='kg');
+  if(mass){if(U.weight==='lb')return v*2.2046226;if(U.weight==='st')return v/6.3502932;return v;}
+  if(t.kind==='len'&&U.length==='in')return v/2.54;
+  return v;}
+function fromDisp(t,v){ if(v==null||v==='')return null; v=+v; if(!isFinite(v))return null;
+  const U=S.settings.units; const mass=t.kind==='mass'||(t.kind==='muscle'&&S.settings.muscleUnit==='kg');
+  if(mass){if(U.weight==='lb')return v/2.2046226;if(U.weight==='st')return v*6.3502932;return v;}
+  if(t.kind==='len'&&U.length==='in')return v*2.54;
+  return v;}
+const show=(t,v)=>fx(toDisp(t,v),t.d==null?1:t.d);
+const massU=()=>S.settings.units.weight;
+const showMass=v=>f1(toDisp({kind:'mass'},v))+' '+massU();
+
+// ---------- users ----------
+const userById=id=>S.users.find(u=>u.id===id);
+const active=()=>userById(S.activeId)||S.users[0];
+function ageOn(birth,date){const b=new Date(birth),d=date?new Date(date):new Date();if(isNaN(b))return 30;
+  let a=d.getFullYear()-b.getFullYear();if(d.getMonth()<b.getMonth()||(d.getMonth()===b.getMonth()&&d.getDate()<b.getDate()))a--;return Math.max(0,a);}
+const ampSum=u=>Object.entries(u.amp||{}).reduce((s,[limb,part])=>{const L=LIMBS.find(x=>x[0]===limb);const p=L&&L[2].find(x=>x[0]===part);return s+(p?p[2]:0);},0);
+const userMs=(u,from,to)=>S.ms.filter(m=>m.userId===u.id&&(!from||new Date(m.t)>=from)&&(!to||new Date(m.t)<=to)).sort((a,b)=>a.t<b.t?-1:1);
+
+// =====================================================================
+// Protocol
+// =====================================================================
+function parseFrame(b){
+  const u16=i=>(b[i]<<8)|b[i+1];
+  const f={slot:b[0],sex:b[1],age:b[2],height:b[3],w:u16(4)/10,fat:u16(6)/10,water:u16(8)/10,bone:u16(10)/10,muscle:u16(12)/10,visc:b[14],kcal:u16(15),bmi:u16(17)/10,b19:b[19]};
+  f.weightOnly=u16(6)===0xFFFF||b[6]===0xFF;
+  f.failed=!f.weightOnly&&u16(6)===0&&u16(8)===0;
+  return f;
+}
+const FIELDS=[[0,1,'User slot',f=>f.slot],[1,1,'Sex',f=>f.sex===0?'male (0)':f.sex===1?'female (1)':f.sex],[2,1,'Age',f=>f.age+' y'],[3,1,'Height',f=>f.height+' cm'],
+  [4,2,'Weight',f=>f1(f.w)+' kg'],[6,2,'Body fat',f=>f.weightOnly?'FF FF = no skin contact':f1(f.fat)+' %'],[8,2,'Water',f=>f1(f.water)+' %'],[10,2,'Bone',f=>f1(f.bone)+' kg'],
+  [12,2,'Muscle',f=>f1(f.muscle)],[14,1,'Visceral fat',f=>f.visc],[15,2,'Calories',f=>f.kcal+' kcal'],[17,2,'BMI',f=>f1(f.bmi)],[19,1,'Unused',f=>f.b19]];
+const kcalFactor=(male,age)=>male?(age<30?24.0:age<50?22.3:21.5):(age<30?22.1:age<50?21.7:20.7);
+
+// =====================================================================
+// Calculations: every derived value carries its formula with the numbers
+// =====================================================================
+function compute(m,u){
+  const R={},v=m.v||{},age=ageOn(u.birth,m.t),H=+u.height,h=H/100,male=u.sex==0,F=S.settings.formulas;
+  const set=(k,val,eq,note,src)=>{if(val!=null&&isFinite(val))R[k]={v:val,eq,note,src:src||'calc'};};
+  const given=(k,note)=>{if(v[k]!=null&&v[k]!==''&&isFinite(+v[k]))set(k,+v[k],null,note,m.raw?'scale':'entered');};
+  // weight + amputation correction
+  let w=v.weight!=null?+v.weight:null;
+  if(w!=null){const a=ampSum(u);
+    if(a>0){const wc=w*100/(100-a);set('weight',wc,`corrected weight = measured × 100 ÷ (100 − ${f1(a)})\n                 = ${f1(w)} × 100 ÷ ${f1(100-a)}\n                 = ${f2(wc)} kg`,'Amputation correction from the profile. All results use the corrected weight.','calc');w=wc;}
+    else set('weight',w,null,m.raw?'Measured by the scale, bytes 4–5 of the result packet (value ÷ 10).':'Entered by hand.',m.raw?'scale':'entered');}
+  const bmi=(w!=null&&H)?w/(h*h):null;
+  if(bmi!=null)set('bmi',bmi,`BMI = weight ÷ height²\n    = ${f1(w)} ÷ ${h.toFixed(2)}²\n    = ${f1(bmi)}`,'Body mass index.');
+  // body fat
+  const meas=v.fat!=null&&isFinite(+v.fat)?+v.fat:null;
+  const inch=x=>x/2.54, lg=Math.log10;
+  const calFat=(()=>{const c=[v.cal1,v.cal2,v.cal3].map(Number);if(c.some(x=>!isFinite(x)||x<=0)||v.cal1==null||v.cal2==null||v.cal3==null)return null;
+    const s=c[0]+c[1]+c[2];const K=male?[1.10938,0.0008267,0.0000016,0.0002574]:[1.0994921,0.0009929,0.0000023,0.0001392];
+    const bd=K[0]-K[1]*s+K[2]*s*s-K[3]*age;if(bd<=0)return null;const p=(4.95/bd-4.5)*100;
+    return {v:p,eq:`S  = ${c.map(x=>f1(x)).join(' + ')} = ${f1(s)} mm\nBD = ${K[0]} − ${K[1]}·S + ${K[2]}·S² − ${K[3]}·age\n   = ${bd.toFixed(5)}\nfat % = (4.95 ÷ BD − 4.5) × 100 = ${f1(p)} %`};})();
+  if(calFat)set('calFat',calFat.v,calFat.eq,'Jackson–Pollock 3-site skinfold equation with the Siri conversion.');
+  let fat=null,fatEq=null,fatNote='';
+  if(F.fat==='measured'||bmi==null){fat=meas;fatNote=m.raw?'Calculated by the scale from its own impedance reading, sent in bytes 6–7. The scale does not reveal its formula; see Settings › Scale formulas for what the tests recovered.':'Entered by hand.';}
+  else{
+    const B=f1(bmi),A=age;
+    switch(F.fat){
+      case 'deurenberg91':fat=1.2*bmi+0.23*age-(male?16.2:5.4);fatEq=`fat % = 1.2·BMI + 0.23·age − ${male?16.2:5.4}\n      = 1.2·${B} + 0.23·${A} − ${male?16.2:5.4}`;break;
+      case 'deurenberg92':fat=age>=16?1.2*bmi+0.23*age-10.8*(male?1:0)-5.4:1.294*bmi+0.20*age-11.4*(male?1:0)-8.0;
+        fatEq=age>=16?`fat % = 1.2·BMI + 0.23·age − 10.8·${male?1:0} − 5.4\n      = 1.2·${B} + 0.23·${A} − ${male?10.8:0} − 5.4`:`fat % = 1.294·BMI + 0.20·age − 11.4·${male?1:0} − 8.0`;break;
+      case 'eddy':fat=male?1.281*bmi-10.13:1.48*bmi-7.0;fatEq=male?`fat % = 1.281·BMI − 10.13\n      = 1.281·${B} − 10.13`:`fat % = 1.48·BMI − 7.0\n      = 1.48·${B} − 7.0`;break;
+      case 'gallagherNA':fat=64.5-848/bmi+0.079*age;fatEq=`fat % = 64.5 − 848 ÷ BMI + 0.079·age\n      = 64.5 − 848 ÷ ${B} + 0.079·${A}`;break;
+      case 'gallagherA':fat=male?51.9-740/bmi+0.029*age:64.8-752/bmi+0.016*age;fatEq=male?`fat % = 51.9 − 740 ÷ BMI + 0.029·age\n      = 51.9 − 740 ÷ ${B} + 0.029·${A}`:`fat % = 64.8 − 752 ÷ BMI + 0.016·age\n      = 64.8 − 752 ÷ ${B} + 0.016·${A}`;break;
+      case 'navy':{const wa=+v.waist,ne=+v.neck,hi=+v.hips,hI=inch(H);
+        if(wa>0&&ne>0&&(male?wa>ne:hi>0)){
+          if(male){fat=86.010*lg(inch(wa)-inch(ne))-70.041*lg(hI)+36.76;fatEq=`fat % = 86.010·log10(waist − neck) − 70.041·log10(height) + 36.76   (inches)\n      = 86.010·log10(${f1(inch(wa))} − ${f1(inch(ne))}) − 70.041·log10(${f1(hI)}) + 36.76`;}
+          else{fat=163.205*lg(inch(wa)+inch(hi)-inch(ne))-97.684*lg(hI)-78.387;fatEq=`fat % = 163.205·log10(waist + hips − neck) − 97.684·log10(height) − 78.387   (inches)\n      = 163.205·log10(${f1(inch(wa))} + ${f1(inch(hi))} − ${f1(inch(ne))}) − 97.684·log10(${f1(hI)}) − 78.387`;}
+        }break;}
+      case 'caliper':if(calFat){fat=calFat.v;fatEq=calFat.eq;}break;
+    }
+    if(fat!=null){fat=clamp(fat,1,70);fatEq+=`\n      = ${f1(fat)} %`;fatNote=FAT_F[F.fat][0]+' (chosen in Settings › Formulas). Limited to 1–70 %.';}
+    else{fat=meas;fatNote=`${FAT_F[F.fat][0]} needs values this measurement does not have, so the measured value is shown.`;}
+  }
+  if(fat!=null)set('fat',fat,fatEq,fatNote,fatEq?'calc':(m.raw?'scale':'entered'));
+  // water
+  const wMeas=v.water!=null&&isFinite(+v.water)?+v.water:null;
+  if(F.water==='measured'||w==null){if(wMeas!=null)set('water',wMeas,null,m.raw?'Calculated by the scale, bytes 8–9. Tests show water (kg) ≈ 0.731 × fat-free mass − 2.37.':'Entered by hand.',m.raw?'scale':'entered');}
+  else{let L=null,eq='';
+    switch(F.water){
+      case 'behnke':L=0.72*((male?0.204:0.18)*H*H)/100;eq=`water (L) = 0.72 × ${male?0.204:0.18} × height² ÷ 100\n          = 0.72 × ${male?0.204:0.18} × ${H}² ÷ 100`;break;
+      case 'delwaide':L=0.72*(-1.976+0.907*w);eq=`water (L) = 0.72 × (−1.976 + 0.907 × weight)\n          = 0.72 × (−1.976 + 0.907 × ${f1(w)})`;break;
+      case 'humeWeyers':L=male?0.194786*H+0.296785*w-14.012934:0.34454*H+0.183809*w-35.270121;eq=male?`water (L) = 0.194786·height + 0.296785·weight − 14.012934`:`water (L) = 0.34454·height + 0.183809·weight − 35.270121`;break;
+      case 'leeSongKim':L=male?-28.3497+0.243057*H+0.366248*w:-26.6224+0.262513*H+0.232948*w;eq=male?`water (L) = −28.3497 + 0.243057·height + 0.366248·weight`:`water (L) = −26.6224 + 0.262513·height + 0.232948·weight`;break;
+    }
+    if(L!=null){L=Math.max(0,L);const p=clamp(L/w*100,0,100);set('water',p,`${eq}\n          = ${f1(L)} L\nwater %   = ${f1(L)} ÷ ${f1(w)} × 100 = ${f1(p)} %`,WATER_F[F.water][0]+' (chosen in Settings › Formulas).');}
+  }
+  // lean body mass and fat mass
+  const fatV=R.fat?R.fat.v:null;
+  if(w!=null){let l=null,eq='';
+    if(F.lbm==='wmf'){if(fatV!=null){l=w*(1-fatV/100);eq=`LBM = weight × (1 − fat % ÷ 100)\n    = ${f1(w)} × (1 − ${f1(fatV)} ÷ 100)`;}}
+    else if(F.lbm==='boer'){l=male?0.4071*w+0.267*H-19.2:0.252*w+0.473*H-48.3;eq=male?`LBM = 0.4071·weight + 0.267·height − 19.2\n    = 0.4071·${f1(w)} + 0.267·${H} − 19.2`:`LBM = 0.252·weight + 0.473·height − 48.3\n    = 0.252·${f1(w)} + 0.473·${H} − 48.3`;}
+    else if(F.lbm==='hume'){l=male?0.32810*w+0.33929*H-29.5336:0.29569*w+0.41813*H-43.2933;eq=male?`LBM = 0.32810·weight + 0.33929·height − 29.5336\n    = 0.32810·${f1(w)} + 0.33929·${H} − 29.5336`:`LBM = 0.29569·weight + 0.41813·height − 43.2933\n    = 0.29569·${f1(w)} + 0.41813·${H} − 43.2933`;}
+    if(l!=null)set('lbm',Math.max(0,l),eq+`\n    = ${f1(l)} kg`,LBM_F[F.lbm][0]+' (chosen in Settings › Formulas).');
+    if(fatV!=null){const fm=w*fatV/100;set('fatMass',fm,`fat mass = weight × fat % ÷ 100\n         = ${f1(w)} × ${f1(fatV)} ÷ 100\n         = ${f1(fm)} kg`);}
+  }
+  // muscle, bone, visceral, scale calories
+  if(v.muscle!=null&&isFinite(+v.muscle)){const mu=+v.muscle;
+    set('muscle',mu,S.settings.muscleUnit==='pct'&&w!=null?`muscle mass = weight × muscle % ÷ 100\n            = ${f1(w)} × ${f1(mu)} ÷ 100\n            = ${f1(w*mu/100)} kg`:null,
+      m.raw?'Calculated by the scale, bytes 12–13. Whether it is a percentage or kg is set in Settings › Units.':'Entered by hand.',m.raw?'scale':'entered');}
+  given('bone',m.raw?'Calculated by the scale, bytes 10–11.':'Entered by hand.');
+  given('visc',m.raw?'Visceral fat rating calculated by the scale, byte 14.':'Entered by hand.');
+  if(v.scaleKcal!=null&&isFinite(+v.scaleKcal)){const fac=kcalFactor(male,age);
+    set('scaleKcal',+v.scaleKcal,`calories = weight × factor for ${male?'men':'women'} aged ${age}\n         = ${f1(v.weight)} × ${fac}\n         = ${Math.round(v.weight*fac)} kcal/day   (stored: ${v.scaleKcal})`,
+      m.raw?'Sent by the scale in bytes 15–16. Recovered rule: weight × a basal metabolic factor per age group (men 24.0 under 30, 22.3 at 30–49, 21.5 at 50+). No impedance or height is used.':'Entered by hand.',m.raw?'scale':'entered');}
+  // BMR / TDEE
+  if(w!=null&&H&&age>0){const bmr=10*w+6.25*H-5*age+(male?5:-161);
+    set('bmr',bmr,`BMR = 10·weight + 6.25·height − 5·age ${male?'+ 5':'− 161'}\n    = 10·${f1(w)} + 6.25·${H} − 5·${age} ${male?'+ 5':'− 161'}\n    = ${Math.round(bmr)} kcal/day`,'Mifflin–St Jeor equation (1990), as used by openScale.');
+    const A=ACTIVITY[u.activity]||ACTIVITY[1];
+    set('tdee',bmr*A[1],`TDEE = BMR × activity factor\n     = ${Math.round(bmr)} × ${A[1]}  (${A[0].toLowerCase()})\n     = ${Math.round(bmr*A[1])} kcal/day`,'Total daily energy use. The activity level is set in the profile.');}
+  // tape measurements and ratios
+  ['waist','hips','chest','thigh','biceps','neck','cal1','cal2','cal3','hr','imp'].forEach(k=>given(k,'Entered by hand.'));
+  if(+v.waist>0&&+v.hips>0)set('whr',v.waist/v.hips,`WHR = waist ÷ hips\n    = ${f1(v.waist)} ÷ ${f1(v.hips)}\n    = ${f2(v.waist/v.hips)}`,'Waist-hip ratio.');
+  if(+v.waist>0&&H)set('whtr',v.waist/H,`WHtR = waist ÷ height\n     = ${f1(v.waist)} ÷ ${H}\n     = ${f2(v.waist/H)}`,'Waist-to-height ratio.');
+  S.settings.custom.forEach(c=>given(c.k,'Entered by hand.'));
+  if(v.comment)R.comment={v:String(v.comment),src:'entered'};
+  return R;
+}
+
+// Reference ranges (from openScale's evaluation tables)
+function band(list,age){return list.find(b=>age>=b[0]&&age<=b[1]);}
+const RANGES={
+  fat:(age,male)=>band(male?[[10,14,11,16],[15,19,12,17],[20,29,13,18],[30,39,14,19],[40,49,15,20],[50,59,16,21],[60,69,17,22],[70,999,18,23]]:[[10,14,16,21],[15,19,17,22],[20,29,18,23],[30,39,19,24],[40,49,20,25],[50,59,21,26],[60,69,22,27],[70,999,23,28]],age),
+  water:(age,male)=>band(male?[[10,999,50,65]]:[[10,999,45,60]],age),
+  muscle:(age,male)=>S.settings.muscleUnit==='pct'?band(male?[[18,29,37.9,46.7],[30,39,34.1,44.1],[40,49,33.1,41.1],[50,59,31.7,38.5],[60,69,29.9,37.7],[70,999,28.7,43.3]]:[[18,29,28.4,39.8],[30,39,25.0,36.2],[40,49,24.2,34.2],[50,59,24.7,33.5],[60,69,22.7,31.9],[70,999,25.5,34.9]],age):null,
+  lbm:(age,male)=>band(male?[[18,24,52.9,62.7],[25,34,53.1,64.8],[35,44,53.83,65.6],[45,54,53.6,65.2],[55,64,51.63,61.1],[65,74,48.48,58.2],[75,120,43.35,60.23]]:[[18,24,34.3,41.9],[25,34,35.2,43.7],[35,44,35.6,47.1],[45,54,36.1,44.9],[55,64,35.15,43.95],[65,74,34.1,42.05],[75,120,33.8,40.4]],age),
+  bmi:(age)=>age>=19||age>=18?[0,999,18.5,25]:null,
+  whtr:(age)=>band([[15,40,0.4,0.5],[41,42,0.4,0.51],[43,44,0.4,0.53],[45,46,0.4,0.55],[47,48,0.4,0.57],[49,50,0.4,0.59],[51,120,0.4,0.6]],age),
+  whr:(age,male)=>age>=18?(male?[0,999,0.8,0.9]:[0,999,0.7,0.8]):null,
+  visc:(age)=>age>=18?[0,999,1,12]:null,
+  waist:(age,male)=>age>=18?(male?[0,999,0,94]:[0,999,0,80]):null,
+  calFat:null
+};
+RANGES.calFat=RANGES.fat;
+function evaluate(k,val,u,t){
+  if(val==null)return null;const age=ageOn(u.birth,t),male=u.sex==0;let r=null;
+  if(k==='weight'){const h2=(u.height/100)**2;r=[0,0,h2*(male?20:19),h2*(male?25:24)];}
+  else if(RANGES[k])r=RANGES[k](age,male);
+  if(!r)return null;const lo=r[2],hi=r[3];
+  return {lo,hi,state:val<lo?'low':val>hi?'high':'normal'};
+}
+const STATE_TXT={low:'Low',normal:'Normal',high:'High'};
+function gaugeHTML(e,val){ if(!e)return '';
+  const span=(e.hi-e.lo)||1;const min=Math.min(e.lo-span*0.8,val),max=Math.max(e.hi+span*0.8,val);const p=x=>((x-min)/(max-min)*100).toFixed(1);
+  return `<div class="gauge" aria-hidden="true"><span class="ok" style="left:${p(e.lo)}%;width:${(p(e.hi)-p(e.lo)).toFixed(1)}%"></span><span class="mk" style="left:${p(val)}%"></span></div>`;}
+
+// =====================================================================
+// Rendering helpers
+// =====================================================================
+let TAB='home';
+function setTheme(){const t=S.settings.theme;if(t==='system')document.documentElement.removeAttribute('data-theme');else document.documentElement.setAttribute('data-theme',t);}
+function toast(t){const d=document.createElement('div');d.className='toast';d.textContent=t;document.body.appendChild(d);setTimeout(()=>d.remove(),2600);}
+window.__toast=toast;
+function go(t){TAB=t;document.querySelectorAll('nav.tabs button').forEach(b=>b.setAttribute('aria-selected',b.dataset.tab===t));
+  ['home','graph','table','stats','insights','settings'].forEach(x=>$('v-'+x).hidden=x!==t);render();window.scrollTo(0,0);}
+function render(){
+  $('userSel').innerHTML=S.users.map(u=>`<option value="${esc(u.id)}"${u.id===S.activeId?' selected':''}>${esc(u.name)}</option>`).join('');
+  ({home:renderHome,graph:renderGraph,table:renderTable,stats:renderStats,insights:renderInsights,settings:renderSettings})[TAB]();
+}
+function rangeDates(code,from,to){
+  const now=new Date();if(code==='all')return [null,null];
+  if(code==='custom')return [from?new Date(from):null,to?new Date(to+'T23:59:59'):null];
+  return [new Date(now-(+code)*DAY),null];}
+function rangeChips(key,codes){
+  const L={'7':'7 d','30':'30 d','90':'3 m','180':'6 m','365':'1 y','all':'All','custom':'Custom'};
+  return `<div class="chips" role="group">${codes.map(c=>`<button class="chip" data-act="range" data-key="${key}" data-val="${c}" aria-pressed="${S.ui[key]===c}">${L[c]}</button>`).join('')}</div>
+   ${S.ui[key]==='custom'?`<div class="grid2"><label class="f">From<input type="date" id="${key}-from" data-ui="${key}From" value="${esc(S.ui[key+'From']||'')}"></label><label class="f">To (empty = today)<input type="date" id="${key}-to" data-ui="${key}To" value="${esc(S.ui[key+'To']||'')}"></label></div>`:''}`;}
+
+// =====================================================================
+// HOME
+// =====================================================================
+function lastTwo(u,k){const list=userMs(u).map(m=>({m,c:compute(m,u)[k]})).filter(x=>x.c);return [list[list.length-1],list[list.length-2]];}
+function renderHome(){
+  const u=active(),ms=userMs(u),last=ms[ms.length-1];
+  const C=last?compute(last,u):{};
+  const lcdW=C.weight?show(typeOf('weight'),C.weight.v):'0.0';
+  let h=`<div class="lcd" aria-live="polite"><div class="big"><span id="lcdW">${lcdW}</span><small>${massU()}</small></div>
+    <div class="r"><span>FAT <b id="lcdF">${C.fat?f1(C.fat.v):'--.-'}</b>%</span><span>H2O <b id="lcdH">${C.water?f1(C.water.v):'--.-'}</b>%</span><span>BMI <b id="lcdB">${C.bmi?f1(C.bmi.v):'--.-'}</b></span></div>
+    <div class="msg${lcdErr?' err':''}" id="lcdMsg">${esc(lcdMsg||(last?'Last reading '+fmtDT(last.t)+'.':'No readings yet. Weigh yourself, then tap Connect.'))}</div></div>
+  <div class="panel">
+    <div class="row">
+      <button class="b primary" data-act="connect" id="btnConnect">Connect</button>
+      <button class="b" data-act="getResult" id="btnResend" disabled>Get result</button>
+      <button class="b" data-act="disconnect" id="btnDisconnect" disabled>Disconnect</button>
+      <button class="b ghost" data-act="add">+ Add by hand</button>
+    </div>
+    <p class="small muted" id="btHint">${btHint()}</p>
+    <label class="chk"><input type="checkbox" id="assistOn" ${assist.on?'checked':''}> Assisted weighing (holding a child, pet or object)</label>
+    ${assist.on?`<label class="f">Subtract the latest weight of<select id="assistCarrier">${S.users.filter(x=>x.id!==u.id).map(x=>{const l=lastTwo(x,'weight')[0];return `<option value="${esc(x.id)}"${assist.carrier===x.id?' selected':''}${l?'':' disabled'}>${esc(x.name)} ${l?'('+showMass(l.c.v)+')':'(no weight yet)'}</option>`;}).join('')||'<option disabled>Add the carrier as a profile first</option>'}</select></label>
+      <p class="small muted">Weigh yourself holding them, then Get result. The difference is saved to ${esc(u.name)} as weight only.</p>`:''}
+  </div>`;
+  // goals
+  const goals=(u.goals||[]).filter(g=>isOn(g.k));
+  if(goals.length){h+=`<div class="panel"><h2>Goals</h2>${goals.map(g=>goalHTML(u,g)).join('')}</div>`;}
+  // tiles
+  if(last){
+    h+=`<div class="row between"><h2>Latest values</h2><button class="b ghost" data-act="open" data-id="${esc(last.id)}">Full details ›</button></div><div class="tiles">`;
+    numericEnabled().forEach(t=>{const [a,b]=lastTwo(u,t.k);if(!a)return;const e=evaluate(t.k,a.c.v,u,a.m.t);
+      let d='';if(b){const diff=toDisp(t,a.c.v)-toDisp(t,b.c.v);d=Math.abs(diff)<Math.pow(10,-(t.d==null?1:t.d))/2?'→ no change':(diff>0?'▲ +':'▼ −')+fx(Math.abs(diff),t.d==null?1:t.d)+' '+unitOf(t);}
+      h+=`<button class="tile" data-act="graphOf" data-k="${t.k}"><span class="n"><span>${esc(t.n)}</span>${e?`<span class="tag ${e.state}">${STATE_TXT[e.state]}</span>`:''}</span>
+        <span class="v">${show(t,a.c.v)}<small>${esc(unitOf(t))}</small></span><span class="d">${d||'&nbsp;'}</span>${gaugeHTML(e,a.c.v)}</button>`;});
+    h+=`</div>`;
+  }
+  // recent
+  h+=`<div class="panel"><div class="row between"><h2>Recent measurements</h2><button class="b ghost" data-act="tab" data-tab="table">All ›</button></div>`;
+  h+=ms.length?`<div class="list">${ms.slice(-6).reverse().map(m=>msRow(m,u)).join('')}</div>`:`<div class="empty"><p>No measurements for ${esc(u.name)} yet.</p><p class="small">Check the profile in Settings first: the scale uses sex, age and height to calculate body composition.</p><div class="row" style="justify-content:center"><button class="b" data-act="add">Add by hand</button><button class="b" data-act="example">Load example data</button></div></div>`;
+  h+=`</div>`;
+  $('v-home').innerHTML=h;
+  setStatus(btState,btText);
+}
+function goalHTML(u,g){
+  const t=typeOf(g.k);if(!t)return '';const [a]=lastTwo(u,g.k);const first=userMs(u).map(m=>compute(m,u)[g.k]).find(Boolean);
+  const cur=a?a.c.v:null,start=g.start!=null?g.start:(first?first.v:null);
+  let pct=0;if(cur!=null&&start!=null&&start!==g.v)pct=clamp((start-cur)/(start-g.v)*100,0,100);
+  const days=g.date?Math.ceil((new Date(g.date)-new Date())/DAY):null;
+  return `<div style="display:flex;flex-direction:column;gap:4px"><div class="row between small"><span>${esc(t.n)}: ${cur!=null?show(t,cur):'–'} → <b>${show(t,g.v)} ${esc(unitOf(t))}</b></span>
+   <span class="muted">${cur!=null?fx(toDisp(t,Math.abs(cur-g.v)),t.d||1)+' '+esc(unitOf(t))+' to go':''}${days!=null?` · ${days>=0?days+' days left':'target date passed'}`:''}</span></div>
+   <div class="gauge"><span class="ok" style="left:0;width:${pct.toFixed(0)}%;opacity:.8;background:var(--accent)"></span></div></div>`;
+}
+function msRow(m,u){const C=compute(m,u);const t=typeOf('weight');
+  return `<button class="li" data-act="open" data-id="${esc(m.id)}"><span><span>${esc(fmtDT(m.t))}</span> ${m.sample?'<span class="tag">sample</span>':''}${m.example?'<span class="tag">example</span>':''}<br><span class="tiny muted">${m.raw?'From scale':m.src==='import'?'Imported':'Entered by hand'}${C.comment?' · '+esc(C.comment.v.slice(0,40)):''}</span></span>
+  <span class="mono num">${C.weight?show(t,C.weight.v)+' '+massU():''}${C.fat?'<br><span class="tiny muted">'+f1(C.fat.v)+' % fat</span>':''}</span></button>`;}
+
+// =====================================================================
+// Measurement details, add / edit
+// =====================================================================
+function openModal(html){$('sheet').innerHTML=html;$('modal').hidden=false;document.body.style.overflow='hidden';const f=$('sheet').querySelector('[autofocus]');if(f)f.focus();}
+function closeModal(){$('modal').hidden=true;$('sheet').innerHTML='';document.body.style.overflow='';}
+function detailHTML(m){
+  const u=userById(m.userId)||active(),C=compute(m,u),age=ageOn(u.birth,m.t);
+  let h=`<div class="hd"><div><h2>${esc(fmtDT(m.t))}</h2><p class="small muted">${esc(u.name)} · ${u.sex==0?'male':'female'}, ${age} y, ${esc(f1(toDisp({kind:'len'},u.height)))} ${S.settings.units.length}</p></div><button class="b sm" data-act="close">Close</button></div>`;
+  if(m.sample)h+=`<p class="notice info">Captured in nRF Connect while testing, with the example profile (40 y, 180 cm, male). Delete it once you have your own readings.</p>`;
+  if(m.example)h+=`<p class="notice info">Example data, generated to show the app's features. Delete the Example profile when you no longer need it.</p>`;
+  h+=`<div class="panel" style="gap:0">`;
+  allTypes().filter(t=>t.kind!=='text'&&(isOn(t.k)||C[t.k])).forEach(t=>{const c=C[t.k];if(!c)return;const e=evaluate(t.k,c.v,u,m.t);
+    const srcT={scale:'from scale',entered:'entered',calc:'calculated'}[c.src]||'';
+    h+=`<details class="m"><summary><span class="mname"><span>${esc(t.n)}</span><span class="src">${srcT}</span></span>
+      <span class="mval"><span>${show(t,c.v)} <small>${esc(unitOf(t))}</small></span>${e?`<span class="tag ${e.state}">${STATE_TXT[e.state]}</span>`:''}</span></summary>
+      <div class="how">${c.eq?`<pre class="eq">${esc(c.eq)}</pre>`:''}${c.note?`<p class="muted">${esc(c.note)}</p>`:''}${e?`<p class="muted">Normal range for your age and sex: ${show(t,e.lo)}–${show(t,e.hi)} ${esc(unitOf(t))}.</p>`:''}</div></details>`;});
+  h+=`</div>`;
+  if(C.comment)h+=`<div class="panel"><h3>Comment</h3><p>${esc(C.comment.v)}</p></div>`;
+  h+=`<div class="panel"><h3>Impedance</h3><p class="small muted">${C.imp?'Entered: '+fx(C.imp.v,0)+' Ω.':'This scale measures impedance but does not send it. You can enter a value measured elsewhere when editing this measurement.'}</p></div>`;
+  if(m.raw){const b=fromHex(m.raw),f=parseFrame(b);
+    h+=`<details class="sec"><summary>Raw packet from the scale</summary><div class="body"><div class="mono" style="word-break:break-all">${esc(m.raw)}</div><div class="scroll"><table><thead><tr><th>Bytes</th><th>Hex</th><th>Field</th><th>Value</th></tr></thead><tbody>`+
+    FIELDS.map(([o,n,name,fn])=>`<tr><td class="mono">${n===2?o+'–'+(o+1):o}</td><td class="mono">${hex(b.slice(o,o+n))}</td><td>${name}</td><td class="num">${esc(fn(f))}</td></tr>`).join('')+`</tbody></table></div></div></details>`;}
+  h+=`<div class="row"><button class="b" data-act="exportOne" data-id="${esc(m.id)}" data-fmt="txt">Download TXT</button><button class="b" data-act="exportOne" data-id="${esc(m.id)}" data-fmt="csv">Download CSV</button><button class="b" data-act="copyOne" data-id="${esc(m.id)}">Copy as text</button></div>
+  <div class="row"><button class="b" data-act="edit" data-id="${esc(m.id)}">Edit</button><button class="b" data-act="compareWith" data-id="${esc(m.id)}">Compare…</button><button class="b danger" data-act="delOne" data-confirm="Tap again to delete" data-id="${esc(m.id)}">Delete</button></div>`;
+  return h;
+}
+function editHTML(m){
+  const u=active(),isNew=!m;m=m||{t:new Date().toISOString(),v:{}};
+  const inputs=allTypes().filter(t=>t.input&&(isOn(t.k)||m.v[t.k]!=null));
+  return `<div class="hd"><h2>${isNew?'Add measurement':'Edit measurement'}</h2><button class="b sm" data-act="close">Cancel</button></div>
+  <form id="editForm" class="panel" data-id="${isNew?'':esc(m.id)}">
+    <label class="f">Date and time<input type="datetime-local" id="ef-t" required value="${localInput(m.t)}"></label>
+    <div class="grid2">${inputs.filter(t=>t.kind!=='text').map(t=>`<label class="f">${esc(t.n)} (${esc(unitOf(t)||'value')})<input type="number" step="any" inputmode="decimal" id="ef-${t.k}" value="${m.v[t.k]!=null?esc(fx(toDisp(t,+m.v[t.k]),Math.max(t.d||1,1))):''}"></label>`).join('')}</div>
+    ${inputs.some(t=>t.k==='comment')?`<label class="f">Comment<textarea id="ef-comment">${esc(m.v.comment||'')}</textarea></label>`:''}
+    <p class="small muted">Leave a field empty if you did not measure it. More types can be turned on in Settings › Measurement types.${m.raw?' Values from the scale can be corrected here; the raw packet stays as it was received.':''}</p>
+    <div class="row"><button class="b primary" type="submit">Save</button></div>
+  </form>`;
+}
+function saveEdit(form){
+  const id=form.dataset.id,u=active();const t=new Date($('ef-t').value);if(isNaN(t)){toast('Enter a valid date');return;}
+  let m=id?S.ms.find(x=>x.id===id):null;const v=m?Object.assign({},m.v):{};
+  allTypes().filter(t=>t.input).forEach(tp=>{const el=$('ef-'+tp.k);if(!el)return;
+    if(tp.kind==='text'){const s=el.value.trim();if(s)v.comment=s;else delete v.comment;return;}
+    const x=fromDisp(tp,el.value);if(x==null)delete v[tp.k];else v[tp.k]=x;});
+  if(!Object.keys(v).length){toast('Enter at least one value');return;}
+  if(m){m.t=t.toISOString();m.v=v;}else{m={id:uid('m'),userId:u.id,t:t.toISOString(),v,src:'manual'};S.ms.push(m);}
+  save();closeModal();render();toast('Saved');
+}
+
+// =====================================================================
+// Export / import
+// =====================================================================
+function exportColumns(list){
+  const keys=[];allTypes().forEach(t=>{if(t.kind==='text')return;if(list.some(x=>x.C[t.k]))keys.push(t);});return keys;}
+function toCSV(ms){
+  const list=ms.map(m=>{const u=userById(m.userId)||active();return {m,u,C:compute(m,u)};});
+  const cols=exportColumns(list);
+  const q=s=>{s=String(s==null?'':s);return /[",\n;]/.test(s)?'"'+s.replace(/"/g,'""')+'"':s;};
+  const head=['date_time','profile','sex','age','height_cm',...cols.map(t=>t.k+'_'+(unitOf(t)||'value').replace('%','pct').replace('Ω','ohm')),'comment','source','raw_packet'];
+  const rows=list.map(({m,u,C})=>[localInput(m.t).replace('T',' '),u.name,u.sex==0?'M':'F',ageOn(u.birth,m.t),u.height,...cols.map(t=>C[t.k]?fx(toDisp(t,C[t.k].v),t.d==null?1:t.d):''),C.comment?C.comment.v:'',m.raw?'scale':m.src||'manual',m.raw||''].map(q).join(','));
+  return [head.join(','),...rows].join('\n');
+}
+function toTXT(ms,withFormulas=true){
+  const out=[`VScale Offline — measurement report`,`Exported ${fmtDT(Date.now())} · ${ms.length} measurement${ms.length===1?'':'s'}`,''];
+  ms.forEach((m,i)=>{const u=userById(m.userId)||active(),C=compute(m,u),age=ageOn(u.birth,m.t);
+    out.push('='.repeat(58),`${fmtDT(m.t)}   ${u.name} (${u.sex==0?'male':'female'}, ${age} y, ${u.height} cm)`,'-'.repeat(58));
+    allTypes().forEach(t=>{const c=C[t.k];if(!c||t.kind==='text')return;const e=evaluate(t.k,c.v,u,m.t);
+      out.push(`${(t.n+' ').padEnd(30,'.')} ${(show(t,c.v)+' '+unitOf(t)).padStart(12)}${e?'   '+STATE_TXT[e.state]+' ('+show(t,e.lo)+'–'+show(t,e.hi)+')':''}`);});
+    if(C.comment)out.push('',`Comment: ${C.comment.v}`);
+    if(withFormulas){const eqs=allTypes().filter(t=>C[t.k]&&C[t.k].eq);if(eqs.length){out.push('','Calculations:');eqs.forEach(t=>{out.push(`  ${t.n}:`);C[t.k].eq.split('\n').forEach(l=>out.push('    '+l));});}}
+    if(m.raw)out.push('',`Raw packet: ${m.raw}`);
+    out.push('');});
+  out.push('Normal ranges follow the reference tables used by openScale. Body composition from a bathroom scale is an estimate.');
+  return out.join('\n');
+}
+async function saveFile(name,text,mime){
+  if(NATIVE&&NATIVE.saveFile){NATIVE.saveFile(name,text,mime);return;}
+  try{if(window.claude&&window.claude.use){const dl=await window.claude.use('downloads');if(dl){try{await dl.save({filename:name,data:text});toast('Saved');}catch(e){if(e&&e.code!=='declined')toast('Could not save here. Use Copy instead.');}return;}}}catch(e){}
+  try{const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([text],{type:mime}));a.download=name;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},800);}catch(e){toast('Download blocked here. Use Copy instead.');}
+}
+async function copy(text){try{await navigator.clipboard.writeText(text);toast('Copied');}catch(e){const ta=document.createElement('textarea');ta.value=text;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');toast('Copied');}catch(_){toast('Select the text and copy it manually');}ta.remove();}}
+const stamp=()=>new Date().toISOString().slice(0,10);
+function exportList(ms,fmt,label,noStamp){if(!ms.length){toast('Nothing to export');return;}
+  const base=`vscale-${(label||'measurements').replace(/[^a-z0-9]+/gi,'-').toLowerCase()}${noStamp?'':'-'+stamp()}`;
+  if(fmt==='csv')saveFile(base+'.csv',toCSV(ms),'text/csv');else saveFile(base+'.txt',toTXT(ms),'text/plain');}
+
+function parseCSVText(txt){
+  const rows=[];let row=[],cell='',q=false;txt=txt.replace(/^﻿/,'');
+  const delim=(()=>{const l=txt.split('\n')[0]||'';return (l.match(/;/g)||[]).length>(l.match(/,/g)||[]).length?';':',';})();
+  for(let i=0;i<txt.length;i++){const c=txt[i];
+    if(q){if(c==='"'){if(txt[i+1]==='"'){cell+='"';i++;}else q=false;}else cell+=c;}
+    else if(c==='"')q=true;else if(c===delim){row.push(cell);cell='';}else if(c==='\n'||c==='\r'){if(c==='\r'&&txt[i+1]==='\n')i++;row.push(cell);rows.push(row);row=[];cell='';}else cell+=c;}
+  if(cell!==''||row.length){row.push(cell);rows.push(row);}
+  return rows.filter(r=>r.some(x=>x.trim()!==''));
+}
+function parseDateLoose(s){s=String(s).trim();if(!s)return null;
+  let m=s.match(/^(\d{1,2})[./](\d{1,2})[./](\d{4})[ T]?(\d{1,2})?:?(\d{2})?/);if(m)return new Date(+m[3],+m[2]-1,+m[1],+(m[4]||0),+(m[5]||0));
+  m=s.match(/^(\d{4})-(\d{2})-(\d{2})[ T]?(\d{1,2})?:?(\d{2})?/);if(m)return new Date(+m[1],+m[2]-1,+m[3],+(m[4]||0),+(m[5]||0));
+  const d=new Date(s);return isNaN(d)?null:d;}
+const ALIASES={weight:['weight','weight_kg','gewicht'],fat:['fat','body_fat','bodyfat','fat_pct','fat_%','body_fat_pct'],water:['water','water_pct','body_water'],muscle:['muscle','muscle_pct','muscle_kg','muscle_mass'],
+  bone:['bone','bone_kg','bone_mass'],visc:['visc','visceral','visceralfat','visceral_fat','visc_value'],scaleKcal:['kcal','calories','scalekcal','scalekcal_kcal'],waist:['waist','waist_cm'],hips:['hip','hips','hips_cm'],
+  chest:['chest','chest_cm'],thigh:['thigh','thigh_cm'],biceps:['biceps','biceps_cm'],neck:['neck','neck_cm'],cal1:['caliper1','caliper_1','cal1','cal1_mm'],cal2:['caliper2','caliper_2','cal2','cal2_mm'],cal3:['caliper3','caliper_3','cal3','cal3_mm'],
+  hr:['heart_rate','heartrate','hr','hr_bpm'],imp:['impedance','imp','imp_ohm'],comment:['comment','comments','note']};
+function importCSV(txt){
+  const rows=parseCSVText(txt);if(rows.length<2)return {n:0,err:'The file has no data rows.'};
+  const head=rows[0].map(h=>h.trim().toLowerCase().replace(/\s+/g,'_'));
+  const di=head.findIndex(h=>['date_time','datetime','date','time','timestamp'].includes(h));
+  if(di<0)return {n:0,err:'No date column found. The first row needs a "date_time" or "dateTime" column.'};
+  const map={};Object.entries(ALIASES).forEach(([k,al])=>{const i=head.findIndex(h=>al.includes(h));if(i>=0)map[k]=i;});
+  const ri=head.indexOf('raw_packet');const u=active();let n=0,skip=0;
+  const weightIsKg=!head.some(h=>h==='weight_lb'||h==='weight_st');
+  rows.slice(1).forEach(r=>{const d=parseDateLoose(r[di]);if(!d){skip++;return;}const v={};
+    Object.entries(map).forEach(([k,i])=>{const s=(r[i]||'').trim();if(!s)return;if(k==='comment'){v.comment=s;return;}const x=parseFloat(s.replace(',','.'));if(isFinite(x))v[k]=x;});
+    if(!weightIsKg&&v.weight!=null)v.weight=head.includes('weight_lb')?v.weight/2.2046226:v.weight*6.3502932;
+    if(!Object.keys(v).length){skip++;return;}
+    if(S.ms.some(m=>m.userId===u.id&&Math.abs(new Date(m.t)-d)<60000)){skip++;return;}
+    const m={id:uid('m'),userId:u.id,t:d.toISOString(),v,src:'import'};const raw=ri>=0&&r[ri]&&r[ri].trim();if(raw&&/^([0-9a-f]{2}[\s-]){19}[0-9a-f]{2}$/i.test(raw.trim())){m.raw=raw.trim();m.src='scale';}
+    S.ms.push(m);n++;});
+  save();return {n,skip};
+}
+
+// =====================================================================
+// GRAPH
+// =====================================================================
+const CH={};
+function smooth(pts){const c=S.settings.chart;if(c.smoothing==='none'||pts.length<3)return null;
+  const segs=[];let cur=[];pts.forEach((p,i)=>{if(i&&(p.t-pts[i-1].t)/DAY>c.maxGap){segs.push(cur);cur=[];}cur.push(p);});segs.push(cur);
+  return segs.map(seg=>{if(c.smoothing==='sma'){const n=Math.max(2,+c.window||5);return seg.map((p,i)=>{const s=seg.slice(Math.max(0,i-n+1),i+1);return {t:p.t,v:s.reduce((a,b)=>a+b.v,0)/s.length};});}
+    const al=clamp(+c.alpha||0.3,0.01,1);let e=seg[0].v;return seg.map(p=>({t:p.t,v:(e=al*p.v+(1-al)*e)}));});}
+function polyfit(xs,ys,deg){ // least squares, small degree
+  const n=deg+1,A=Array.from({length:n},()=>Array(n+1).fill(0));
+  xs.forEach((x,i)=>{for(let r=0;r<n;r++){for(let c=0;c<n;c++)A[r][c]+=x**(r+c);A[r][n]+=ys[i]*x**r;}});
+  for(let i=0;i<n;i++){let p=i;for(let r=i+1;r<n;r++)if(Math.abs(A[r][i])>Math.abs(A[p][i]))p=r;[A[i],A[p]]=[A[p],A[i]];if(Math.abs(A[i][i])<1e-12)return null;
+    for(let r=0;r<n;r++)if(r!==i){const f=A[r][i]/A[i][i];for(let c=i;c<=n;c++)A[r][c]-=f*A[i][c];}}
+  return A.map((r,i)=>r[n]/r[i]);}
+function niceStep(x){const p=Math.pow(10,Math.floor(Math.log10(x||1)));const n=x/p;return (n<=1?1:n<=2?2:n<=2.5?2.5:n<=5?5:10)*p;}
+function chartHTML(t,pts,opts){
+  // pts in display units: [{t, v, id}]
+  const id='c'+t.k,W=380,Hh=200,L=40,R=10,T=14,B=24,c=S.settings.chart,col=colorOf(t.k);
+  if(!pts.length)return `<div class="chart"><div class="cap"><b>${esc(t.n)}</b></div><p class="small muted">No values in this period.</p></div>`;
+  let sm=smooth(pts);let proj=null;
+  if(c.projection&&pts.length>=3){const last=pts[pts.length-1].t;const basis=pts.filter(p=>p.t>=last-(+c.projBasis||60)*DAY);
+    if(basis.length>=3){const deg=Math.min(+c.projDegree||1,2,basis.length-1);const x0=basis[0].t;const co=polyfit(basis.map(p=>(p.t-x0)/DAY),basis.map(p=>p.v),deg);
+      if(co){const ev=d=>co.reduce((s,a,i)=>s+a*d**i,0);proj=[];const end=(last-x0)/DAY+(+c.projDays||30);for(let d=(last-x0)/DAY;d<=end+1e-9;d+=Math.max(1,(+c.projDays||30)/20))proj.push({t:x0+d*DAY,v:ev(d)});}}}
+  const goal=opts.goal!=null?opts.goal:null;
+  const allV=pts.map(p=>p.v).concat(sm?sm.flat().map(p=>p.v):[]).concat(proj?proj.map(p=>p.v):[]).concat(goal!=null&&c.goals?[goal]:[]);
+  let mn=Math.min(...allV),mx=Math.max(...allV);if(mx-mn<1e-6){mn-=1;mx+=1;}
+  const step=niceStep((mx-mn)/4);mn=Math.floor(mn/step)*step;mx=Math.ceil(mx/step)*step;
+  const t0=opts.from||pts[0].t,t1=Math.max(proj?proj[proj.length-1].t:0,opts.to||pts[pts.length-1].t,t0+DAY);
+  const X=x=>L+(W-L-R)*((x-t0)/(t1-t0)),Y=v=>T+(Hh-T-B)*(1-(v-mn)/(mx-mn));
+  let g='';const dec=step<1?(step<0.1?2:1):0;
+  for(let v=mn;v<=mx+step/2;v+=step)g+=`<line x1="${L}" x2="${W-R}" y1="${Y(v).toFixed(1)}" y2="${Y(v).toFixed(1)}" stroke="var(--line)" stroke-width="1"/><text x="${L-7}" y="${(Y(v)+4).toFixed(1)}" text-anchor="end" font-size="11" fill="var(--muted)" font-family="IBM Plex Mono,monospace">${v.toFixed(dec)}</text>`;
+  const ticks=[t0,(t0+t1)/2,t1];g+=ticks.map((x,i)=>`<text x="${X(x).toFixed(1)}" y="${Hh-7}" text-anchor="${['start','middle','end'][i]}" font-size="11" fill="var(--muted)" font-family="IBM Plex Sans,sans-serif">${esc(fmtShort(x))}</text>`).join('');
+  const path=arr=>arr.map((p,i)=>`${i?'L':'M'}${X(p.t).toFixed(1)},${Y(p.v).toFixed(1)}`).join(' ');
+  let body='';
+  if(goal!=null&&c.goals)body+=`<line x1="${L}" x2="${W-R}" y1="${Y(goal).toFixed(1)}" y2="${Y(goal).toFixed(1)}" stroke="var(--ok)" stroke-width="1.5" stroke-dasharray="6 4"/><text x="${W-R}" y="${(Y(goal)-5).toFixed(1)}" text-anchor="end" font-size="11" fill="var(--ok)" font-family="IBM Plex Sans,sans-serif">goal ${goal.toFixed(t.d||1)}</text>`;
+  if(pts.length>1){const ar=`${path(pts)} L${X(pts[pts.length-1].t).toFixed(1)},${Hh-B} L${X(pts[0].t).toFixed(1)},${Hh-B} Z`;
+    body+=`<path d="${ar}" fill="${col}" fill-opacity="${sm?0.05:0.09}"/><path d="${path(pts)}" fill="none" stroke="${col}" stroke-width="${sm?1:2}" stroke-opacity="${sm?0.45:1}"/>`;}
+  if(sm)sm.forEach(seg=>{if(seg.length>1)body+=`<path d="${path(seg)}" fill="none" stroke="${col}" stroke-width="2.4"/>`;});
+  if(proj)body+=`<path d="${path(proj)}" fill="none" stroke="${col}" stroke-width="2" stroke-dasharray="5 5"/>`;
+  if(c.points)body+=pts.map(p=>`<circle cx="${X(p.t).toFixed(1)}" cy="${Y(p.v).toFixed(1)}" r="2.6" fill="${col}"/>`).join('');
+  const lp=pts[pts.length-1];body+=`<circle cx="${X(lp.t).toFixed(1)}" cy="${Y(lp.v).toFixed(1)}" r="5" fill="var(--surface)" stroke="${col}" stroke-width="2"/>`;
+  body+=`<line id="${id}-x" x1="0" x2="0" y1="${T}" y2="${Hh-B}" stroke="var(--muted)" stroke-width="1" visibility="hidden"/><circle id="${id}-dot" r="5" fill="${col}" visibility="hidden"/>`;
+  CH[id]={pts,X,Y,t,W};
+  const first=pts[0],chg=lp.v-first.v;
+  return `<div class="chart"><div class="cap"><b>${esc(t.n)} <span class="muted small">${esc(unitOf(t))}</span></b><span class="mono small">${lp.v.toFixed(t.d==null?1:t.d)} · ${chg>=0?'+':''}${chg.toFixed(t.d==null?1:t.d)} in period</span></div>
+    <svg viewBox="0 0 ${W} ${Hh}" data-chart="${id}" role="img" aria-label="${esc(t.n)} chart">${g}${body}</svg><div class="tip" id="${id}-tip">Touch the chart to read values${proj?' · dashed line: projection':''}${goal!=null&&c.goals?' · green: goal':''}</div></div>`;
+}
+function chartPointer(svg,ev){const id=svg.dataset.chart,c=CH[id];if(!c)return null;const r=svg.getBoundingClientRect();const x=(ev.clientX-r.left)/r.width*c.W;
+  let best=null,bd=1e9;c.pts.forEach(p=>{const d=Math.abs(c.X(p.t)-x);if(d<bd){bd=d;best=p;}});if(!best)return null;
+  const X=c.X(best.t).toFixed(1),Y=c.Y(best.v).toFixed(1);const ln=$(id+'-x'),dt=$(id+'-dot');
+  ln.setAttribute('x1',X);ln.setAttribute('x2',X);ln.setAttribute('visibility','visible');dt.setAttribute('cx',X);dt.setAttribute('cy',Y);dt.setAttribute('visibility','visible');
+  $(id+'-tip').textContent=`${fmtDT(best.t)} · ${best.v.toFixed(c.t.d==null?1:c.t.d)} ${unitOf(c.t)} — tap again for details`;return best;}
+function seriesOf(u,k,from,to){const t=typeOf(k);return userMs(u,from,to).map(m=>{const c=compute(m,u)[k];return c?{t:new Date(m.t).getTime(),v:toDisp(t,c.v),id:m.id}:null;}).filter(Boolean);}
+function renderGraph(){
+  const u=active();const [from,to]=rangeDates(S.ui.range,S.ui.rangeFrom,S.ui.rangeTo);
+  const types=numericEnabled();if(!Array.isArray(S.ui.metrics))S.ui.metrics=['weight'];S.ui.metrics=S.ui.metrics.filter(k=>types.some(t=>t.k===k));
+  let h=`<div class="panel">${rangeChips('range',['30','90','180','365','all','custom'])}
+    <div class="chips">${types.map(t=>`<button class="chip" data-act="metric" data-k="${t.k}" aria-pressed="${S.ui.metrics.includes(t.k)}"><i style="background:${colorOf(t.k)}"></i>${esc(t.n)}</button>`).join('')}</div>
+    <div class="row"><button class="b ghost sm" data-act="metricsAll">Show all</button><button class="b ghost sm" data-act="metricsNone">Clear</button></div></div>`;
+  const ms=userMs(u,from,to);
+  if(!ms.length)h+=`<div class="panel"><div class="empty"><p>No measurements in this period for ${esc(u.name)}.</p><button class="b" data-act="range" data-key="range" data-val="all">Show all time</button></div></div>`;
+  else if(!S.ui.metrics.length)h+=`<div class="panel"><div class="empty"><p>Choose one or more measurements above to draw their graphs.</p></div></div>`;
+  else{h+=`<div class="panel">`;
+    S.ui.metrics.forEach((k,i)=>{const t=typeOf(k);const pts=seriesOf(u,k,from,to);const g=(u.goals||[]).find(x=>x.k===k);
+      h+=(i?'<hr style="border:0;border-top:1px solid var(--line);margin:4px 0">':'')+chartHTML(t,pts,{from:from?from.getTime():null,to:to?to.getTime():null,goal:g?toDisp(t,g.v):null});});
+    h+=`<p class="tiny muted">${ms.length} measurement${ms.length===1?'':'s'} in this period. Smoothing, data points, goal lines and projection are set in Settings › Chart.</p></div>`;}
+  $('v-graph').innerHTML=h;
+}
+
+// =====================================================================
+// TABLE
+// =====================================================================
+const SEL=new Set();
+function renderTable(){
+  const u=active();const [from,to]=rangeDates(S.ui.trange||'all',S.ui.trangeFrom,S.ui.trangeTo);if(!S.ui.trange)S.ui.trange='all';
+  const ms=userMs(u,from,to).reverse();[...SEL].forEach(id=>{if(!ms.some(m=>m.id===id))SEL.delete(id);});
+  const cols=numericEnabled();
+  let h=`<div class="panel">${rangeChips('trange',['30','90','365','all','custom'])}
+   <div class="row"><button class="b primary sm" data-act="add">+ Add</button>
+     <button class="b sm" data-act="selAll">${SEL.size===ms.length&&ms.length?'Select none':'Select all'}</button>
+     <span class="small muted">${SEL.size} of ${ms.length} selected</span></div>
+   <div class="row"><button class="b sm" data-act="exportSel" data-fmt="csv" ${SEL.size?'':'disabled'}>Export CSV</button><button class="b sm" data-act="exportSel" data-fmt="txt" ${SEL.size?'':'disabled'}>Export TXT</button>
+     <button class="b sm danger" data-act="delSel" data-confirm="Delete ${SEL.size}? Tap again" ${SEL.size?'':'disabled'}>Delete selected</button>
+     <button class="b sm" data-act="compareSel" ${SEL.size===2?'':'disabled'}>Compare 2</button></div></div>`;
+  if(!ms.length)h+=`<div class="panel"><div class="empty"><p>No measurements in this period.</p></div></div>`;
+  else{h+=`<div class="panel" style="padding:0"><div class="scroll"><table><thead><tr><th><span class="sr" style="position:absolute;left:-9999px">Select</span></th><th>Date</th>${cols.map(t=>`<th class="n">${esc(t.n)}<br><span class="tiny">${esc(unitOf(t))}</span></th>`).join('')}${isOn('comment')?'<th>Comment</th>':''}</tr></thead><tbody>`+
+    ms.map(m=>{const C=compute(m,u);return `<tr class="${SEL.has(m.id)?'sel':''}" data-row="${esc(m.id)}"><td><input type="checkbox" data-sel="${esc(m.id)}" aria-label="Select ${esc(fmtDT(m.t))}" ${SEL.has(m.id)?'checked':''}></td><td>${esc(fmtDT(m.t))}</td>${cols.map(t=>{const c=C[t.k];const e=c&&evaluate(t.k,c.v,u,m.t);return `<td class="n"${e&&e.state!=='normal'?` style="color:var(--${e.state==='high'?'bad':'warn'})"`:''}>${c?show(t,c.v):''}</td>`;}).join('')}${isOn('comment')?`<td>${esc(C.comment?C.comment.v.slice(0,40):'')}</td>`:''}</tr>`;}).join('')+`</tbody></table></div></div>
+    <p class="tiny muted">Tap a row for details, formulas and single-measurement export. Values outside the normal range are coloured.</p>`;}
+  $('v-table').innerHTML=h;
+}
+
+// =====================================================================
+// STATISTICS + comparison
+// =====================================================================
+function renderStats(){
+  const u=active();const [from,to]=rangeDates(S.ui.statRange,S.ui.statRangeFrom,S.ui.statRangeTo);const ms=userMs(u,from,to);
+  let h=`<div class="panel">${rangeChips('statRange',['7','30','90','365','all','custom'])}<p class="small muted">${ms.length} measurement${ms.length===1?'':'s'}${ms.length?' from '+fmtDate(ms[0].t)+' to '+fmtDate(ms[ms.length-1].t):''}.</p></div>`;
+  if(ms.length){
+    h+=`<div class="panel" style="padding:0"><div class="scroll"><table><thead><tr><th>Measurement</th><th class="n">Start</th><th class="n">End</th><th class="n">Change</th><th class="n">Min</th><th class="n">Max</th><th class="n">Average</th><th class="n">Count</th></tr></thead><tbody>`;
+    numericEnabled().forEach(t=>{const s=seriesOf(u,t.k,from,to);if(!s.length)return;const vs=s.map(p=>p.v);const d=t.d==null?1:t.d;const ch=vs[vs.length-1]-vs[0];
+      const pc=vs[0]?ch/Math.abs(vs[0])*100:0;
+      h+=`<tr data-act="graphOf" data-k="${t.k}"><td>${esc(t.n)} <span class="tiny muted">${esc(unitOf(t))}</span></td><td class="n">${vs[0].toFixed(d)}</td><td class="n">${vs[vs.length-1].toFixed(d)}</td><td class="n">${ch>=0?'+':''}${ch.toFixed(d)}${s.length>1?` <span class="tiny muted">(${pc>=0?'+':''}${pc.toFixed(1)}%)</span>`:''}</td><td class="n">${Math.min(...vs).toFixed(d)}</td><td class="n">${Math.max(...vs).toFixed(d)}</td><td class="n">${(vs.reduce((a,b)=>a+b,0)/vs.length).toFixed(d)}</td><td class="n">${vs.length}</td></tr>`;});
+    h+=`</tbody></table></div></div>`;
+  }
+  const all=userMs(u).reverse();
+  const opt=sel=>all.map(m=>`<option value="${esc(m.id)}"${m.id===sel?' selected':''}>${esc(fmtDT(m.t))}${compute(m,u).weight?' · '+showMass(compute(m,u).weight.v):''}</option>`).join('');
+  if(!S.ui.cmpA||!all.some(m=>m.id===S.ui.cmpA))S.ui.cmpA=all[1]?all[1].id:'';
+  if(!S.ui.cmpB||!all.some(m=>m.id===S.ui.cmpB))S.ui.cmpB=all[0]?all[0].id:'';
+  h+=`<div class="panel"><h2>Compare two measurements</h2>`;
+  if(all.length<2)h+=`<p class="small muted">Needs at least two measurements.</p>`;
+  else{const A=all.find(m=>m.id===S.ui.cmpA),B=all.find(m=>m.id===S.ui.cmpB),CA=compute(A,u),CB=compute(B,u);
+    h+=`<div class="grid2"><label class="f">Earlier<select id="cmpA" data-ui="cmpA">${opt(S.ui.cmpA)}</select></label><label class="f">Later<select id="cmpB" data-ui="cmpB">${opt(S.ui.cmpB)}</select></label></div>
+    <div class="scroll"><table><thead><tr><th>Measurement</th><th class="n">Earlier</th><th class="n">Later</th><th class="n">Difference</th></tr></thead><tbody>`+
+    numericEnabled().filter(t=>CA[t.k]||CB[t.k]).map(t=>{const a=CA[t.k],b=CB[t.k],d=t.d==null?1:t.d;const df=a&&b?toDisp(t,b.v)-toDisp(t,a.v):null;
+      return `<tr><td>${esc(t.n)} <span class="tiny muted">${esc(unitOf(t))}</span></td><td class="n">${a?show(t,a.v):'–'}</td><td class="n">${b?show(t,b.v):'–'}</td><td class="n">${df==null?'–':(df>=0?'+':'')+df.toFixed(d)}</td></tr>`;}).join('')+
+    `</tbody></table></div><p class="tiny muted">${Math.round(Math.abs(new Date(B.t)-new Date(A.t))/DAY)} days apart.</p>`;}
+  h+=`</div>`;
+  $('v-stats').innerHTML=h;
+}
+
+// =====================================================================
+// INSIGHTS
+// =====================================================================
+function linreg(xs,ys){const n=xs.length,mx=xs.reduce((a,b)=>a+b,0)/n,my=ys.reduce((a,b)=>a+b,0)/n;let sxy=0,sxx=0;xs.forEach((x,i)=>{sxy+=(x-mx)*(ys[i]-my);sxx+=(x-mx)**2;});const b=sxx?sxy/sxx:0;return {b,a:my-b*mx};}
+const median=a=>{const s=[...a].sort((x,y)=>x-y),n=s.length;return n?(n%2?s[(n-1)/2]:(s[n/2-1]+s[n/2])/2):0;};
+function renderInsights(){
+  const u=active();const types=numericEnabled();if(!types.some(t=>t.k===S.ui.insMetric))S.ui.insMetric=types[0]?types[0].k:'weight';
+  const k=S.ui.insMetric,t=typeOf(k),d=t.d==null?1:t.d,U=unitOf(t);const s=seriesOf(u,k);
+  let h=`<div class="panel"><label class="f">Analyse<select id="insMetric" data-ui="insMetric">${types.map(x=>`<option value="${x.k}"${x.k===k?' selected':''}>${esc(x.n)}</option>`).join('')}</select></label></div>`;
+  // trend
+  h+=`<div class="panel"><h2>Your ${esc(t.n.toLowerCase())} analysis</h2>`;
+  if(s.length<5)h+=`<p class="small muted">At least 5 measurements are needed to analyse how your ${esc(t.n.toLowerCase())} changed. You have ${s.length}.</p>`;
+  else{const last=s[s.length-1],win=s.filter(p=>p.t>=last.t-90*DAY);const use=win.length>=5?win:s;
+    const r=linreg(use.map(p=>(p.t-use[0].t)/DAY),use.map(p=>p.v));const perMonth=r.b*30.44;
+    const res=use.map(p=>p.v-(r.a+r.b*(p.t-use[0].t)/DAY));const sd=Math.sqrt(res.reduce((a,b)=>a+b*b,0)/res.length);const rel=sd/Math.abs(median(use.map(p=>p.v))||1)*100;
+    const vol=rel<1?'stable':rel<3?'moderate':'high';
+    const band=Math.max(Math.abs(last.v)*0.01,sd*1.5,Math.pow(10,-d));let i=s.length-1;while(i>0&&Math.abs(s[i-1].v-last.v)<=band)i--;const plateau=Math.round((last.t-s[i].t)/DAY);
+    const dir=Math.abs(perMonth)<band/2?'Stable':perMonth>0?'Increasing':'Decreasing';
+    h+=`<div class="kv"><span class="k">Start (${esc(fmtDate(s[0].t))})</span><span class="v">${s[0].v.toFixed(d)} ${esc(U)}</span>
+      <span class="k">Now (${esc(fmtDate(last.t))})</span><span class="v">${last.v.toFixed(d)} ${esc(U)}</span>
+      <span class="k">Total change</span><span class="v">${(last.v-s[0].v>=0?'+':'')+(last.v-s[0].v).toFixed(d)} ${esc(U)}</span>
+      <span class="k">Trend ${use===win?'(last 90 days)':'(all data)'}</span><span class="v">${dir}</span>
+      <span class="k">Rate per month</span><span class="v">${(perMonth>=0?'+':'')+perMonth.toFixed(Math.max(d,1))} ${esc(U)}</span>
+      <span class="k">Volatility</span><span class="v">${vol} (±${sd.toFixed(Math.max(d,1))})</span>
+      <span class="k">Stable period</span><span class="v">${plateau} days</span></div>`;
+    const msg=plateau>=21?`No significant change for ${plateau} days. Your body may be adapting.`:vol==='high'?'High fluctuation detected. This is common and can reflect natural daily variation in water and food.':vol==='stable'?'Your values are very consistent, which gives a reliable basis.':dir==='Decreasing'?'Recent downward trend.':dir==='Increasing'?'Recent upward trend. Keep an eye on the long-term direction.':'Values are holding steady.';
+    h+=`<p class="notice info">${esc(msg)}</p>`;}
+  h+=`</div>`;
+  // body composition pattern
+  h+=`<div class="panel"><h2>Your body composition</h2>`;
+  const comp=userMs(u,new Date(Date.now()-90*DAY)).map(m=>{const C=compute(m,u);if(!C.weight||!C.fat||!C.muscle)return null;const w=C.weight.v;
+      return {t:new Date(m.t).getTime(),w,fm:C.fatMass?C.fatMass.v:w*C.fat.v/100,mm:S.settings.muscleUnit==='kg'?C.muscle.v:w*C.muscle.v/100};}).filter(Boolean);
+  if(comp.length<4)h+=`<p class="small muted">At least 4 measurements in the last 90 days with weight, body fat and muscle are needed. You have ${comp.length}.</p>`;
+  else{const xs=comp.map(p=>(p.t-comp[0].t)/DAY);const sl=key=>linreg(xs,comp.map(p=>p[key])).b*30.44;const sw=sl('w'),sf=sl('fm'),smu=sl('mm');const th=0.2;
+    const F=sf<-th?-1:sf>th?1:0,M=smu<-th?-1:smu>th?1:0;
+    const [lab,txt]=F<0&&M>0?['Recomposition','You are losing fat while gaining muscle, the best possible outcome.']:F>0&&M>0?['Bulking','Both fat and muscle are increasing. If this is not a deliberate bulk, review your diet.']:F<0&&M<0?['Mixed loss','Weight is dropping, but muscle mass is declining too. More protein and strength training help preserve it.']:F>0&&M<=0?['Fat gain','Fat mass is increasing while muscle is stable or falling.']:F<0?['Fat loss','Fat is dropping while muscle mass is being preserved.']:M>0?['Muscle gain','Muscle mass is rising while fat stays stable.']:M<0?['Muscle loss','Muscle mass is falling while fat stays stable.']:['Stable','All metrics are stable: a maintenance phase.'];
+    const a=comp[0],z=comp[comp.length-1];
+    h+=`<p><span class="tag normal">${lab}</span></p><p class="small">${esc(txt)}</p><div class="scroll"><table><thead><tr><th></th><th class="n">Start</th><th class="n">Now</th><th class="n">Per month</th></tr></thead><tbody>
+      <tr><td>Weight</td><td class="n">${showMass(a.w)}</td><td class="n">${showMass(z.w)}</td><td class="n">${(sw>=0?'+':'')+f2(toDisp({kind:'mass'},sw))}</td></tr>
+      <tr><td>Fat mass</td><td class="n">${showMass(a.fm)}</td><td class="n">${showMass(z.fm)}</td><td class="n">${(sf>=0?'+':'')+f2(toDisp({kind:'mass'},sf))}</td></tr>
+      <tr><td>Muscle mass</td><td class="n">${showMass(a.mm)}</td><td class="n">${showMass(z.mm)}</td><td class="n">${(smu>=0?'+':'')+f2(toDisp({kind:'mass'},smu))}</td></tr></tbody></table></div>
+      <p class="tiny muted">Based on ${comp.length} measurements in the last 90 days. Muscle mass uses the scale's muscle value${S.settings.muscleUnit==='pct'?' as a percentage of weight':''}.</p>`;}
+  h+=`</div>`;
+  // weekday habits
+  h+=`<div class="panel"><h2>Your weekly habits</h2>`;
+  if(s.length<10)h+=`<p class="small muted">At least 10 measurements are needed to look for weekly patterns.</p>`;
+  else{const r=linreg(s.map(p=>p.t/DAY),s.map(p=>p.v));const by=Array.from({length:7},()=>[]);s.forEach(p=>{const wd=(new Date(p.t).getDay()+6)%7;by[wd].push(p.v-(r.a+r.b*p.t/DAY));});
+    const days=by.map(a=>a.length>=2?a.reduce((x,y)=>x+y,0)/a.length:null);const valid=days.filter(x=>x!=null).length;
+    if(valid<4)h+=`<p class="small muted">Measure on more different weekdays (at least 2 readings on 4 weekdays) to see a pattern.</p>`;
+    else{const mxA=Math.max(...days.filter(x=>x!=null).map(Math.abs))||1;const hi=days.indexOf(Math.max(...days.filter(x=>x!=null))),lo=days.indexOf(Math.min(...days.filter(x=>x!=null)));
+      h+=`<p class="small">You tend to measure highest on <b>${WEEKDAYS[hi]}</b> and lowest on <b>${WEEKDAYS[lo]}</b>, ${(days[hi]-days[lo]).toFixed(Math.max(d,1))} ${esc(U)} apart after removing the overall trend.</p>
+      <div class="bars">${days.map((x,i)=>`<div><span class="tiny mono">${x==null?'':(x>=0?'+':'')+x.toFixed(Math.max(d,1))}</span><span class="bar" style="height:${x==null?0:(8+Math.abs(x)/mxA*62).toFixed(0)}px;${x!=null&&x<0?'opacity:.4':''}"></span>${WEEKDAYS[i]}</div>`).join('')}</div>`;}}
+  h+=`</div>`;
+  // seasonal
+  h+=`<div class="panel"><h2>Your year in review</h2>`;
+  const span=s.length?(s[s.length-1].t-s[0].t)/DAY:0;
+  if(span<330)h+=`<p class="small muted">About a year of data is needed to detect seasonal patterns. You have ${Math.round(span)} days.</p>`;
+  else{const mo=Array.from({length:12},()=>[]);s.forEach(p=>mo[new Date(p.t).getMonth()].push(p.v));const av=mo.map(a=>a.length?a.reduce((x,y)=>x+y,0)/a.length:null);const v2=av.filter(x=>x!=null);
+    const hi=av.indexOf(Math.max(...v2)),lo=av.indexOf(Math.min(...v2));h+=`<p class="small">Your values tend to peak in <b>${MONTHS[hi]}</b> (${av[hi].toFixed(d)}) and dip in <b>${MONTHS[lo]}</b> (${av[lo].toFixed(d)}).</p>`;}
+  h+=`</div>`;
+  // anomalies
+  h+=`<div class="panel"><h2>Unusual measurements</h2>`;
+  if(s.length<10)h+=`<p class="small muted">At least 10 measurements are needed to detect unusual values.</p>`;
+  else{const exp=s.map((p,i)=>median(s.slice(Math.max(0,i-3),i).concat(s.slice(i+1,i+4)).map(x=>x.v)));const dev=s.map((p,i)=>p.v-exp[i]);const mad=median(dev.map(Math.abs))||Math.pow(10,-d);
+    const lim=Math.max(4*mad,Math.abs(median(s.map(p=>p.v)))*0.015);const an=s.map((p,i)=>({p,e:exp[i],dv:dev[i]})).filter(x=>Math.abs(x.dv)>lim);
+    h+=an.length?`<div class="list">${an.slice(-8).reverse().map(x=>`<button class="li" data-act="open" data-id="${esc(x.p.id)}"><span>${esc(fmtDT(x.p.t))}<br><span class="tiny muted">${(x.dv>=0?'+':'')+x.dv.toFixed(Math.max(d,1))} ${esc(U)} from the expected ${x.e.toFixed(d)}</span></span><span class="mono">${x.p.v.toFixed(d)} ${esc(U)}</span></button>`).join('')}</div>`:`<p class="small muted">No unusual measurements detected.</p>`;}
+  h+=`</div><p class="tiny muted">Insights are statistical summaries of your own data, not medical advice.</p>`;
+  $('v-insights').innerHTML=h;
+}
+
+// =====================================================================
+// SETTINGS
+// =====================================================================
+const opts=(obj,sel)=>Object.entries(obj).map(([k,v])=>`<option value="${k}"${k===sel?' selected':''}>${esc(Array.isArray(v)?v[0]:v)}</option>`).join('');
+function renderSettings(){
+  const u=active(),st=S.settings,lenU=st.units.length;
+  let h=`<details class="sec" open><summary>Profile: ${esc(u.name)}</summary><div class="body">
+    <div class="grid2">
+      <label class="f">Name<input id="pf-name" data-user="name" value="${esc(u.name)}" autocomplete="off"></label>
+      <label class="f">Sex<select id="pf-sex" data-user="sex"><option value="0"${u.sex==0?' selected':''}>Male</option><option value="1"${u.sex==1?' selected':''}>Female</option></select></label>
+      <label class="f">Date of birth<input type="date" id="pf-birth" data-user="birth" value="${esc(u.birth)}"></label>
+      <label class="f">Height (${lenU})<input type="number" step="any" inputmode="decimal" id="pf-height" data-user="height" value="${f1(toDisp({kind:'len'},u.height))}"></label>
+      <label class="f">Activity level<select id="pf-activity" data-user="activity">${ACTIVITY.map((a,i)=>`<option value="${i}"${u.activity==i?' selected':''}>${a[0]} (×${a[1]})</option>`).join('')}</select></label>
+      <label class="f">User number sent to the scale<input type="number" min="0" max="9" id="pf-slot" data-user="slot" value="${u.slot}"></label>
+    </div>
+    <p class="small muted">Age today: ${ageOn(u.birth)}. The scale uses sex, age and height for its body composition, so keep them accurate.</p>
+    <h3>Goals</h3>
+    ${(u.goals||[]).map((g,i)=>{const t=typeOf(g.k);return t?`<div class="row between small"><span>${esc(t.n)} → ${show(t,g.v)} ${esc(unitOf(t))}${g.date?' by '+esc(fmtDate(g.date)):''}</span><button class="b sm danger" data-act="goalDel" data-i="${i}">Remove</button></div>`:'';}).join('')||'<p class="small muted">No goals yet.</p>'}
+    <div class="grid3"><label class="f">Measurement<select id="goal-k">${numericEnabled().filter(t=>!t.der||['bmi','lbm','fatMass','whtr'].includes(t.k)).map(t=>`<option value="${t.k}">${esc(t.n)}</option>`).join('')}</select></label>
+      <label class="f">Target value<input type="number" step="any" inputmode="decimal" id="goal-v"></label><label class="f">Target date (optional)<input type="date" id="goal-d"></label></div>
+    <div class="row"><button class="b sm" data-act="goalAdd">Add goal</button></div>
+    <h3>Amputation correction</h3>
+    <div class="grid2">${LIMBS.map(([k,n,parts])=>`<label class="f">${n}<select id="amp-${k}" data-amp="${k}"><option value="">None</option>${parts.map(p=>`<option value="${p[0]}"${u.amp[k]===p[0]?' selected':''}>${p[1]} (${p[2]} %)</option>`).join('')}</select></label>`).join('')}</div>
+    <p class="small muted">Weight is corrected as measured × 100 ÷ (100 − missing body share), as in openScale.</p>
+  </div></details>
+
+  <details class="sec"><summary>Profiles (${S.users.length})</summary><div class="body">
+    <div class="list">${S.users.map(x=>`<div class="li" style="cursor:default"><span>${esc(x.name)}${x.id===u.id?' <span class="tag normal">active</span>':''}<br><span class="tiny muted">${x.sex==0?'Male':'Female'}, ${ageOn(x.birth)} y, ${x.height} cm · ${S.ms.filter(m=>m.userId===x.id).length} measurements</span></span>
+      <span class="row">${x.id!==u.id?`<button class="b sm" data-act="useUser" data-id="${esc(x.id)}">Use</button>`:''}${S.users.length>1?`<button class="b sm danger" data-act="delUser" data-id="${esc(x.id)}" data-confirm="Delete with all data? Tap again">Delete</button>`:''}</span></div>`).join('')}</div>
+    <div class="row"><button class="b" data-act="newUser">Add profile</button></div>
+    <label class="chk"><input type="checkbox" id="smartAssign" data-set="smartAssign" ${st.smartAssign?'checked':''}> Smart user assignment</label>
+    <p class="small muted">With several profiles: after a weigh-in, the reading goes to the profile whose last weight is closest (within 5 kg), and that profile is sent to the scale so the body composition is calculated for them.</p>
+  </div></details>
+
+  <details class="sec"><summary>Measurement types</summary><div class="body">
+    <p class="small muted">Choose what appears in the app. Colours are used in graphs.</p>
+    <div class="list">${allTypes().map(t=>`<div class="row between" style="padding:6px 0;border-top:1px solid var(--line)"><label class="chk"><input type="checkbox" data-type="${t.k}" ${isOn(t.k)?'checked':''}> ${esc(t.n)} <span class="tiny muted">${esc(t.der?'calculated':t.kind==='text'?'text':unitOf(t))}</span></label>
+      <span class="row">${t.kind!=='text'?`<input type="color" data-color="${t.k}" value="${colorOf(t.k)}" aria-label="Colour for ${esc(t.n)}">`:''}${t.custom?`<button class="b sm danger" data-act="delCustom" data-k="${t.k}" data-confirm="Delete type and values?">Delete</button>`:''}</span></div>`).join('')}</div>
+    <h3>Add your own type</h3>
+    <div class="grid3"><label class="f">Name<input id="ct-n" placeholder="e.g. Blood pressure"></label><label class="f">Unit<input id="ct-u" placeholder="e.g. mmHg"></label><label class="f">Decimals<input type="number" id="ct-d" min="0" max="3" value="1"></label></div>
+    <div class="row"><button class="b sm" data-act="addCustom">Add type</button></div>
+  </div></details>
+
+  <details class="sec"><summary>Formulas</summary><div class="body">
+    <label class="f">Body fat<select id="fm-fat" data-set="formulas.fat">${opts(FAT_F,st.formulas.fat)}</select></label><p class="small muted">${esc(FAT_F[st.formulas.fat][1])}</p>
+    <label class="f">Body water<select id="fm-water" data-set="formulas.water">${opts(WATER_F,st.formulas.water)}</select></label><p class="small muted">${esc(WATER_F[st.formulas.water][1])}</p>
+    <label class="f">Lean body mass<select id="fm-lbm" data-set="formulas.lbm">${opts(LBM_F,st.formulas.lbm)}</select></label><p class="small muted">${esc(LBM_F[st.formulas.lbm][1])}</p>
+    <p class="small muted">BMR uses Mifflin–St Jeor and TDEE multiplies it by the profile's activity level. Every result shows its formula with your numbers: tap a value in a measurement's details.</p>
+  </div></details>
+
+  <details class="sec"><summary>Scale formulas (recovered by testing)</summary><div class="body">
+    <p class="small">The scale keeps its last weigh-in and recalculates it for whatever profile it receives. Sending different profiles revealed:</p>
+<pre class="eq">calories = weight × factor
+           men:   24.0 (under 30)  22.3 (30–49)  21.5 (50+)
+           women: 21.7 (30–49), other ages assumed from the same table
+water kg ≈ 0.731 × fat-free mass − 2.37
+fat %    ≈ c + 1.139·BMI + 0.0117·BMI² + 0.1027·|age − 30|
+           c depends on your impedance (−16.81 for the test weigh-ins)
+women:   +10.8 % fat and −6.5 muscle compared with men</pre>
+    <p class="small muted">Impedance changes fat, water, bone, muscle and visceral fat but is never sent, so its exact term is still open. Calibration with known resistors can recover it.</p>
+  </div></details>
+
+  <details class="sec"><summary>Units</summary><div class="body"><div class="grid3">
+    <label class="f">Weight<select id="un-w" data-set="units.weight"><option value="kg"${st.units.weight==='kg'?' selected':''}>kg</option><option value="lb"${st.units.weight==='lb'?' selected':''}>lb</option><option value="st"${st.units.weight==='st'?' selected':''}>st</option></select></label>
+    <label class="f">Length<select id="un-l" data-set="units.length"><option value="cm"${lenU==='cm'?' selected':''}>cm</option><option value="in"${lenU==='in'?' selected':''}>in</option></select></label>
+    <label class="f">Scale's muscle value is<select id="un-m" data-set="muscleUnit"><option value="pct"${st.muscleUnit==='pct'?' selected':''}>% of weight</option><option value="kg"${st.muscleUnit==='kg'?' selected':''}>Mass (kg)</option></select></label>
+  </div><p class="small muted">Values are stored in kg and cm, so switching units never changes your data.</p></div></details>
+
+  <details class="sec"><summary>Chart</summary><div class="body">
+    <label class="chk"><input type="checkbox" data-set="chart.points" ${st.chart.points?'checked':''}> Show data points</label>
+    <label class="chk"><input type="checkbox" data-set="chart.goals" ${st.chart.goals?'checked':''}> Show goal lines</label>
+    <div class="grid2"><label class="f">Smoothing<select id="ch-sm" data-set="chart.smoothing"><option value="none"${st.chart.smoothing==='none'?' selected':''}>No smoothing</option><option value="sma"${st.chart.smoothing==='sma'?' selected':''}>Moving average</option><option value="ses"${st.chart.smoothing==='ses'?' selected':''}>Exponential smoothing</option></select></label>
+      ${st.chart.smoothing==='sma'?`<label class="f">Window size (measurements)<input type="number" min="2" max="30" id="ch-win" data-set="chart.window" value="${st.chart.window}"></label>`:st.chart.smoothing==='ses'?`<label class="f">Alpha (0.01–1)<input type="number" step="0.05" min="0.01" max="1" id="ch-al" data-set="chart.alpha" value="${st.chart.alpha}"></label>`:'<span></span>'}
+      ${st.chart.smoothing!=='none'?`<label class="f">Max. gap for smoothing (days)<input type="number" min="1" id="ch-gap" data-set="chart.maxGap" value="${st.chart.maxGap}"></label>`:''}</div>
+    <label class="chk"><input type="checkbox" data-set="chart.projection" ${st.chart.projection?'checked':''}> Show projection</label>
+    ${st.chart.projection?`<div class="grid3"><label class="f">Based on last (days)<input type="number" min="7" id="ch-pb" data-set="chart.projBasis" value="${st.chart.projBasis}"></label><label class="f">Project for (days)<input type="number" min="1" id="ch-pd" data-set="chart.projDays" value="${st.chart.projDays}"></label><label class="f">Model<select id="ch-pm" data-set="chart.projDegree"><option value="1"${st.chart.projDegree==1?' selected':''}>Linear</option><option value="2"${st.chart.projDegree==2?' selected':''}>Curved (quadratic)</option></select></label></div>`:''}
+  </div></details>
+
+  <details class="sec"><summary>Reminder</summary><div class="body">
+    ${NATIVE&&NATIVE.setReminder?'':'<p class="notice">Reminders work in the Android app. Settings made here are kept.</p>'}
+    <label class="chk"><input type="checkbox" data-set="reminder.on" ${st.reminder.on?'checked':''}> Remind me to weigh myself</label>
+    <div class="grid2"><label class="f">Time<input type="time" id="rm-t" data-set="reminder.time" value="${esc(st.reminder.time)}"></label><label class="f">Text<input id="rm-x" data-set="reminder.text" value="${esc(st.reminder.text)}"></label></div>
+    <div class="chips">${WEEKDAYS.map((w,i)=>`<button class="chip" data-act="remDay" data-d="${i+1}" aria-pressed="${st.reminder.days.includes(i+1)}">${w}</button>`).join('')}</div>
+  </div></details>
+
+  <details class="sec"><summary>Data management</summary><div class="body">
+    <h3>Export</h3>
+    <div class="row"><button class="b sm" data-act="exportAll" data-fmt="csv" data-scope="user">${esc(u.name)}: CSV</button><button class="b sm" data-act="exportAll" data-fmt="txt" data-scope="user">${esc(u.name)}: TXT</button>
+      <button class="b sm" data-act="exportAll" data-fmt="csv" data-scope="all">All profiles: CSV</button><button class="b sm" data-act="exportAll" data-fmt="txt" data-scope="all">All profiles: TXT</button></div>
+    <p class="small muted">For one measurement, open it and use Download. For a selection, use the Table tab.</p>
+    <h3>Import</h3>
+    <label class="b sm" style="width:max-content">Import CSV into ${esc(u.name)}<input type="file" id="fileCsv" accept=".csv,text/csv,text/plain" hidden></label>
+    <p class="small muted">Reads this app's CSV and openScale's export (date column plus weight, fat, water, muscle, bone, waist, hips and so on). Readings already present at the same minute are skipped.</p>
+    <h3>Backup</h3>
+    <div class="row"><button class="b sm" data-act="backup">Download backup</button><label class="b sm">Restore backup<input type="file" id="fileBackup" accept=".json,application/json" hidden></label></div>
+    ${NATIVE&&NATIVE.pickBackupFolder?`<label class="chk"><input type="checkbox" data-set="backup.on" ${st.backup.on?'checked':''}> Automatic backup after every change</label>
+      <div class="row"><button class="b sm" data-act="pickFolder">${st.backup.folder?'Change folder':'Choose backup folder'}</button><span class="small muted">${esc(st.backup.folder||'No folder chosen')}</span></div>
+      <label class="f">Backup behaviour<select id="bk-m" data-set="backup.mode"><option value="overwrite"${st.backup.mode==='overwrite'?' selected':''}>Overwrite one backup file</option><option value="daily"${st.backup.mode==='daily'?' selected':''}>New file each day</option></select></label>`:''}
+    <h3>Example data</h3>
+    <div class="row"><button class="b sm" data-act="example">Load example profile</button></div>
+    <h3>Danger zone</h3>
+    <div class="row"><button class="b sm danger" data-act="delUserMs" data-confirm="Delete all of ${esc(u.name)}'s measurements? Tap again">Delete ${esc(u.name)}'s measurements</button>
+      <button class="b sm danger" data-act="delAll" data-confirm="Erase everything? Tap again">Erase everything</button></div>
+  </div></details>
+
+  <details class="sec"><summary>Scale and Bluetooth</summary><div class="body">
+    <div class="grid2"><label class="f">Write type<select id="bt-w" data-set="write"><option value="response"${st.write==='response'?' selected':''}>With response (Request)</option><option value="noresponse"${st.write==='noresponse'?' selected':''}>Without response (Command)</option></select></label>
+    <label class="chk" style="align-self:end"><input type="checkbox" data-set="haptics" ${st.haptics?'checked':''}> Vibrate on new measurement</label></div>
+    <div class="scroll"><table><tbody>
+      <tr><td>Device name</td><td class="mono">VSCALE (Exingtech Y1 protocol)</td></tr>
+      <tr><td>Service</td><td class="mono">f433bd80-75b8-11e2-97d9-0002a5d5c51b</td></tr>
+      <tr><td>Results (notify)</td><td class="mono">1a2ea400-75b9-11e2-be05-0002a5d5c51b</td></tr>
+      <tr><td>Commands (write)</td><td class="mono">29f11080-75b9-11e2-8bf6-0002a5d5c51b</td></tr>
+      <tr><td>Profile command</td><td class="mono">10 · user · sex · age · height</td></tr>
+      <tr><td>No skin contact</td><td class="mono">bytes 6–7 = FF FF (scale shows ErrF)</td></tr></tbody></table></div>
+    <h3>Formula probe</h3>
+    <p class="small muted">Weigh yourself, connect, then run. It sends the same weigh-in with different ages, heights and sexes and records the scale's answers. Nothing is saved to history.</p>
+    <div class="row"><button class="b sm" data-act="probe" ${btState==='on'?'':'disabled'}>Run probe</button><button class="b sm" data-act="copyProbe" ${probeRows.length?'':'disabled'}>Copy results</button></div>
+    <p class="small muted" id="probeStatus">${btState==='on'?'Ready.':'Connect to the scale first.'}</p><div class="scroll" id="probeTable">${probeTableHTML()}</div>
+    <h3>Raw traffic</h3><pre class="log" id="log">${esc(LOG.join('\n')||'No traffic yet.')}</pre>
+    <div class="row"><button class="b sm" data-act="copyLog">Copy log</button><button class="b sm" data-act="clearLog">Clear</button></div>
+  </div></details>
+
+  <details class="sec"><summary>Appearance</summary><div class="body"><label class="f">Theme<select id="th" data-set="theme"><option value="system"${st.theme==='system'?' selected':''}>Follow the phone</option><option value="light"${st.theme==='light'?' selected':''}>Light</option><option value="dark"${st.theme==='dark'?' selected':''}>Dark</option></select></label></div></details>
+
+  <details class="sec"><summary>About</summary><div class="body"><p class="small">VScale Offline ${VERSION}. Works without internet: profiles, measurements and calculations stay on this phone. Formulas, reference ranges and features follow openScale (GPL v3), adapted for the bodivis VSCALE.</p></div></details>`;
+  const open=[...document.querySelectorAll('#v-settings details.sec')].map(d=>d.open);
+  $('v-settings').innerHTML=h;
+  if(open.length)document.querySelectorAll('#v-settings details.sec').forEach((d,i)=>{d.open=!!open[i];});
+}
+
+// =====================================================================
+// Bluetooth (Web Bluetooth in Chrome, native bridge in the Android app)
+// =====================================================================
+const LOG=[];
+function log(dir,ch,data){LOG.push(`${new Date().toLocaleTimeString()} ${dir} ${ch} ${data}`);if(LOG.length>400)LOG.shift();const el=$('log');if(el){el.textContent=LOG.join('\n');el.scrollTop=1e9;}}
+let dev=null,cmdCh=null,lastRaw='',lastAt=0,probeWait=null,probeRows=[],btState='off',btText='Not connected',lcdMsg='',lcdErr=false,smartPending=null;
+const assist={on:false,carrier:''};
+function btHint(){
+  if(!navigator.bluetooth&&!NATIVE)return 'Bluetooth is not available in this preview. Install the Android app, or open this page from its own web address in Chrome on Android.';
+  return 'Step on the scale barefoot and wait until it shows your weight. Then tap Connect (or Get result when connected). The scale calculates your results from that weigh-in using this profile.';}
+function setStatus(state,text){btState=state;btText=text;$('dot').className='dot'+(state==='on'?' on':state==='busy'?' busy':'');$('statusText').textContent=text;
+  const c=$('btnConnect'),r=$('btnResend'),d=$('btnDisconnect');if(c){c.disabled=state!=='off';r.disabled=state!=='on';d.disabled=state==='off';}}
+function lcd(msg,err,f){lcdMsg=msg;lcdErr=!!err;const el=$('lcdMsg');if(el){el.textContent=msg;el.classList.toggle('err',!!err);}
+  if(f&&$('lcdW')){$('lcdW').textContent=show(typeOf('weight'),f.w);const ok=!f.weightOnly&&!f.failed;$('lcdF').textContent=ok?f1(f.fat):'--.-';$('lcdH').textContent=ok?f1(f.water):'--.-';$('lcdB').textContent=f1(f.bmi);}}
+function profileBytes(u){u=u||active();return new Uint8Array([0x10,(+u.slot)&0xFF,u.sex==1?1:0,ageOn(u.birth)&0xFF,Math.round(u.height)&0xFF]);}
+window.__ble={
+  status(state,text){
+    if(state==='ready'){cmdCh=true;setStatus('on',text||'Connected');writeCmd(profileBytes()).catch(()=>{});lcd('Profile sent. If no result appears, weigh yourself, then tap Get result.');}
+    else{if(state==='off')cmdCh=null;setStatus(state,text);if(state==='off'&&text&&text!=='Disconnected')lcd(text,true);}},
+  notify(uuid,h){const b=fromHex(h);if(uuid.toLowerCase().startsWith('1a2ea400'))onFrame(b);else log('←',uuid.slice(0,8),hex(b));},
+  error(msg){log('!','native',msg);lcd(msg,true);}
+};
+window.__native={backupFolder(name){S.settings.backup.folder=name;S.settings.backup.on=true;save();if(TAB==='settings')render();toast('Backup folder set');}};
+async function writeCmd(bytes){
+  if(NATIVE){log('→',CH_CMD.slice(0,8),hex(bytes));NATIVE.write(hex(bytes),S.settings.write==='response');return;}
+  if(!cmdCh)throw new Error('Not connected');log('→',CH_CMD.slice(0,8),hex(bytes));
+  const order=S.settings.write==='response'?['writeValueWithResponse','writeValueWithoutResponse']:['writeValueWithoutResponse','writeValueWithResponse'];
+  for(const fn of order){try{if(cmdCh[fn]){await cmdCh[fn](bytes);return;}}catch(e){log('!','write',fn+' failed: '+e.message);}}
+  await cmdCh.writeValue(bytes);}
+async function connect(){
+  if(NATIVE){setStatus('busy','Searching…');lcd('Looking for the scale. Step on it if it is asleep.');NATIVE.connect();return;}
+  if(!navigator.bluetooth){lcd(btHint(),true);return;}
+  try{setStatus('busy','Searching…');
+    dev=await navigator.bluetooth.requestDevice({filters:[{services:[SVC]},{name:'VSCALE'},{name:'VScale'},{namePrefix:'VSCALE'}],optionalServices:[SVC,SVC2]});
+    dev.addEventListener('gattserverdisconnected',()=>{setStatus('off','Disconnected');cmdCh=null;});
+    setStatus('busy','Connecting…');const server=await dev.gatt.connect();const svc=await server.getPrimaryService(SVC);
+    const res=await svc.getCharacteristic(CH_RES);res.addEventListener('characteristicvaluechanged',e=>onFrame(new Uint8Array(e.target.value.buffer)));await res.startNotifications();
+    try{const aux=await svc.getCharacteristic(CH_AUX);aux.addEventListener('characteristicvaluechanged',e=>log('←',CH_AUX.slice(0,8),hex(new Uint8Array(e.target.value.buffer))));await aux.startNotifications();}catch(e){log('!','aux',e.message);}
+    cmdCh=await svc.getCharacteristic(CH_CMD);setStatus('on','Connected to '+(dev.name||'scale'));
+    await writeCmd(profileBytes());lcd('Profile sent. If no result appears, weigh yourself, then tap Get result.');
+  }catch(e){setStatus('off','Not connected');lcd(e.name==='NotFoundError'?'No scale selected.':'Connection failed: '+e.message+'. Close the bodivis app, wake the scale, and try again.',e.name!=='NotFoundError');}
+}
+function closestUser(w){let best=null,bd=1e9;S.users.forEach(u=>{const l=lastTwo(u,'weight')[0];if(!l)return;const d=Math.abs(l.m.v.weight-w);if(d<bd){bd=d;best=u;}});return bd<=5?best:null;}
+function onFrame(b){
+  log('←',CH_RES.slice(0,8),hex(b));if(b.length!==20)return;const f=parseFrame(b);
+  if(probeWait){const w=probeWait;probeWait=null;f.raw=hex(b);w(f);return;}
+  const u=active(),raw=hex(b),now=Date.now();
+  if(assist.on){const c=userById(assist.carrier);const l=c&&lastTwo(c,'weight')[0];
+    if(!l){lcd('Choose whose weight to subtract first.',true);return;}
+    const net=f.w-l.m.v.weight;if(net<=0){lcd(`Total ${f1(f.w)} kg is not more than ${c.name}'s ${f1(l.m.v.weight)} kg.`,true);return;}
+    S.ms.push({id:uid('m'),userId:u.id,t:new Date().toISOString(),v:{weight:net,comment:`Assisted weighing: ${f1(f.w)} kg total − ${f1(l.m.v.weight)} kg (${c.name})`},src:'assisted'});
+    assist.on=false;save();buzz();lcd(`Saved ${showMass(net)} for ${u.name} (${f1(f.w)} − ${f1(l.m.v.weight)} kg).`,false,f);render();return;}
+  if(f.weightOnly||f.failed){lcd(`Weight ${showMass(f.w)}, but no body composition: the scale got no skin contact (ErrF). Stand barefoot on all four pads, weigh again, then tap Get result.`,true,f);return;}
+  if(S.settings.smartAssign&&S.users.length>1&&!smartPending){const best=closestUser(f.w);
+    if(best&&best.id!==u.id){smartPending=best.id;S.activeId=best.id;save();render();lcd(`Weight matches ${best.name}. Recalculating for their profile…`);writeCmd(profileBytes(best)).catch(()=>{smartPending=null;});return;}}
+  smartPending=null;
+  const dup=raw===lastRaw&&now-lastAt<120000;lastRaw=raw;lastAt=now;
+  if(dup){lcd('Same result as before (not saved twice).',false,f);return;}
+  if(f.age!==ageOn(u.birth)||f.height!==Math.round(u.height))log('!','note','The profile in the packet differs from the active profile.');
+  const m={id:uid('m'),userId:u.id,t:new Date().toISOString(),raw,v:decodeRaw(raw),src:'scale'};S.ms.push(m);save();buzz();
+  lcd(`Saved for ${u.name}.`,false,f);render();openModal(detailHTML(m));
+}
+function buzz(){if(!S.settings.haptics)return;try{if(NATIVE&&NATIVE.vibrate)NATIVE.vibrate(120);else if(navigator.vibrate)navigator.vibrate(120);}catch(e){}}
+function waitFrame(ms){return new Promise(res=>{probeWait=res;setTimeout(()=>{if(probeWait===res){probeWait=null;res(null);}},ms);});}
+function probeTableHTML(){return probeRows.length?`<table><thead><tr><th>Sex</th><th class="n">Age</th><th class="n">Height</th><th class="n">Weight</th><th class="n">Fat %</th><th class="n">Water %</th><th class="n">Bone</th><th class="n">Muscle</th><th class="n">Visc</th><th class="n">kcal</th></tr></thead><tbody>${probeRows.map(r=>`<tr><td>${r.sex?'F':'M'}</td><td class="n">${r.age}</td><td class="n">${r.h}</td>${r.f?`<td class="n">${f1(r.f.w)}</td><td class="n">${f1(r.f.fat)}</td><td class="n">${f1(r.f.water)}</td><td class="n">${f1(r.f.bone)}</td><td class="n">${f1(r.f.muscle)}</td><td class="n">${r.f.visc}</td><td class="n">${r.f.kcal}</td>`:'<td colspan="7" class="muted">no reply</td>'}</tr>`).join('')}</tbody></table>`:'';}
+async function runProbe(){
+  const u=active(),a=ageOn(u.birth),hh=Math.round(u.height),sx=u.sex==1?1:0,L=[[sx,a,hh]];
+  [20,30,40,50,60,70].forEach(x=>{if(x!==a)L.push([sx,x,hh]);});[150,160,170,180,190,200].forEach(x=>{if(x!==hh)L.push([sx,a,x]);});L.push([sx?0:1,a,hh]);L.push([sx,a,hh]);
+  probeRows=[];for(let i=0;i<L.length;i++){const [s,ag,ht]=L[i];const st=$('probeStatus');if(st)st.textContent=`Sending ${i+1} of ${L.length}…`;
+    const wait=waitFrame(4000);try{await writeCmd(new Uint8Array([0x10,u.slot&0xFF,s,ag,ht]));}catch(e){probeWait=null;if(st)st.textContent='Stopped: '+e.message;break;}
+    const f=await wait;probeRows.push({sex:s,age:ag,h:ht,f:f&&!f.weightOnly?f:null,raw:f?f.raw:''});const pt=$('probeTable');if(pt)pt.innerHTML=probeTableHTML();await new Promise(r=>setTimeout(r,600));}
+  const st=$('probeStatus');if(st)st.textContent=`Done: ${probeRows.filter(r=>r.f).length} of ${L.length} replies. Copy the results and paste them in the chat.`;
+  try{await writeCmd(profileBytes());}catch(e){}if(TAB==='settings')render();}
+const probeCSV=()=>['sex,age,height_cm,weight_kg,fat_pct,water_pct,bone_kg,muscle,visceral,kcal,bmi,raw',...probeRows.map(r=>r.f?[r.sex,r.age,r.h,f1(r.f.w),f1(r.f.fat),f1(r.f.water),f1(r.f.bone),f1(r.f.muscle),r.f.visc,r.f.kcal,f1(r.f.bmi),r.raw].join(','):[r.sex,r.age,r.h,'no reply'].join(','))].join('\n');
+
+// =====================================================================
+// Example data
+// =====================================================================
+function addExampleData(silent){
+  let u=S.users.find(x=>x.example);if(u){S.activeId=u.id;save();if(!silent){render();toast('Example profile already loaded');}return;}
+  u={id:uid('u'),name:'Example',example:true,sex:0,birth:'1986-03-14',height:180,slot:2,activity:1,goals:[],amp:{}};
+  if(S.users.length===1&&!S.ms.length&&S.users[0].name==='Me'&&silent)S.users=[];
+  S.users.push(u);S.activeId=u.id;
+  let seed=7;const rnd=()=>{seed=(seed*16807)%2147483647;return seed/2147483647;};const gauss=()=>{let s=0;for(let i=0;i<6;i++)s+=rnd();return s-3;};
+  const now=Date.now(),start=now-200*DAY;let t=start;let i=0;
+  while(t<now){const d=new Date(t);d.setHours(7,10+Math.floor(rnd()*35),0,0);const days=(d-start)/DAY;
+    let w=108.6-days*0.021+Math.sin(days/23)*0.5+gauss()*0.35+((d.getDay()===1)?0.6:0);if(i===27)w+=2.4;
+    const age=ageOn(u.birth,d),bmi=w/3.24;const fat=-17.0+1.139*bmi+0.0117*bmi*bmi+0.1027*Math.abs(age-30)+gauss()*0.25-days*0.006;
+    const ffm=w*(1-fat/100),water=(0.731*ffm-2.37)/w*100,muscle=23.5+(32.6-bmi)*0.85+days*0.004+gauss()*0.2;
+    const v={weight:+w.toFixed(1),fat:+fat.toFixed(1),water:+water.toFixed(1),bone:+(3.9+(bmi-32.6)*0.06).toFixed(1),muscle:+muscle.toFixed(1),visc:Math.round(-18.08+0.861*bmi+0.0077*bmi*bmi+0.0726*Math.abs(age-30)),scaleKcal:Math.round(w*kcalFactor(true,age))};
+    if(i%7===0){v.waist=+(112-days*0.02+gauss()*0.4).toFixed(1);v.hips=+(108-days*0.012+gauss()*0.3).toFixed(1);v.neck=+(42.5+gauss()*0.2).toFixed(1);}
+    if(i===27)v.comment='After a holiday weekend';
+    S.ms.push({id:uid('m'),userId:u.id,t:d.toISOString(),v,src:'manual',example:true});
+    t+=DAY*(1+Math.floor(rnd()*2.2));i++;}
+  u.goals=[{k:'weight',v:98,date:new Date(now+150*DAY).toISOString().slice(0,10),start:108.6},{k:'fat',v:25}];
+  S.settings.types.waist.on=true;S.settings.types.whtr.on=true;S.settings.types.fatMass.on=true;
+  save();if(!silent){render();toast('Example profile loaded');}
+}
+
+// =====================================================================
+// Events
+// =====================================================================
+const armed=new Map();
+function confirmTap(el){const key=el.dataset.act+'|'+(el.dataset.id||el.dataset.k||'');if(armed.get(key)&&Date.now()-armed.get(key)<4000){armed.delete(key);return true;}
+  armed.set(key,Date.now());const old=el.textContent;el.textContent=el.dataset.confirm;el.classList.add('armed');setTimeout(()=>{if(el.isConnected&&armed.has(key)){el.textContent=old;el.classList.remove('armed');armed.delete(key);}},4000);return false;}
+const ACT={
+  tab:a=>go(a.dataset.tab),
+  connect:()=>connect(),
+  getResult:async()=>{try{await writeCmd(profileBytes());lcd('Profile sent. Waiting for the result…');}catch(e){lcd('Could not send: '+e.message,true);}},
+  disconnect:()=>{try{if(NATIVE)NATIVE.disconnect();else if(dev)dev.gatt.disconnect();}catch(e){}cmdCh=null;setStatus('off','Disconnected');},
+  add:()=>openModal(editHTML(null)),
+  edit:a=>openModal(editHTML(S.ms.find(m=>m.id===a.dataset.id))),
+  open:a=>{const m=S.ms.find(x=>x.id===a.dataset.id);if(m)openModal(detailHTML(m));},
+  close:()=>closeModal(),
+  delOne:a=>{if(!confirmTap(a))return;S.ms=S.ms.filter(m=>m.id!==a.dataset.id);SEL.delete(a.dataset.id);save();closeModal();render();toast('Measurement deleted');},
+  exportOne:a=>{const m=S.ms.find(x=>x.id===a.dataset.id);if(m)exportList([m],a.dataset.fmt,'measurement-'+localInput(m.t).replace(/[:T]/g,'-'),true);},
+  copyOne:a=>{const m=S.ms.find(x=>x.id===a.dataset.id);if(m)copy(toTXT([m]));},
+  compareWith:a=>{S.ui.cmpB=a.dataset.id;const u=active(),all=userMs(u);const i=all.findIndex(m=>m.id===a.dataset.id);S.ui.cmpA=(all[i-1]||all[i+1]||{}).id||'';closeModal();go('stats');setTimeout(()=>{const el=$('cmpA');if(el)el.scrollIntoView({block:'center'});},50);},
+  graphOf:a=>{if(!S.ui.metrics.includes(a.dataset.k))S.ui.metrics=[a.dataset.k].concat(S.ui.metrics).slice(0,6);save();go('graph');},
+  range:a=>{S.ui[a.dataset.key]=a.dataset.val;save();render();},
+  metric:a=>{const k=a.dataset.k,i=S.ui.metrics.indexOf(k);if(i>=0)S.ui.metrics.splice(i,1);else S.ui.metrics.push(k);save();render();},
+  metricsAll:()=>{S.ui.metrics=numericEnabled().map(t=>t.k);save();render();},
+  metricsNone:()=>{S.ui.metrics=[];save();render();},
+  selAll:()=>{const [from,to]=rangeDates(S.ui.trange,S.ui.trangeFrom,S.ui.trangeTo);const ms=userMs(active(),from,to);if(SEL.size===ms.length)SEL.clear();else ms.forEach(m=>SEL.add(m.id));render();},
+  exportSel:a=>exportList(S.ms.filter(m=>SEL.has(m.id)).sort((x,y)=>x.t<y.t?-1:1),a.dataset.fmt,active().name+'-selection'),
+  delSel:a=>{if(!confirmTap(a))return;const n=SEL.size;S.ms=S.ms.filter(m=>!SEL.has(m.id));SEL.clear();save();render();toast(`${n} measurement${n===1?'':'s'} deleted`);},
+  compareSel:()=>{const ids=S.ms.filter(m=>SEL.has(m.id)).sort((x,y)=>x.t<y.t?-1:1).map(m=>m.id);S.ui.cmpA=ids[0];S.ui.cmpB=ids[1];go('stats');},
+  exportAll:a=>{const ms=(a.dataset.scope==='all'?S.ms.slice():userMs(active())).sort((x,y)=>x.t<y.t?-1:1);exportList(ms,a.dataset.fmt,a.dataset.scope==='all'?'all-profiles':active().name);},
+  backup:()=>saveFile(`vscale-backup-${stamp()}.json`,JSON.stringify(S,null,1),'application/json'),
+  pickFolder:()=>{if(NATIVE&&NATIVE.pickBackupFolder)NATIVE.pickBackupFolder();},
+  example:()=>addExampleData(false),
+  delUserMs:a=>{if(!confirmTap(a))return;const id=active().id;S.ms=S.ms.filter(m=>m.userId!==id);save();render();toast('Measurements deleted');},
+  delAll:a=>{if(!confirmTap(a))return;S=defaults();save();setTheme();render();toast('Everything erased');},
+  newUser:()=>{const u=blankUser('Profile '+(S.users.length+1));u.slot=S.users.length+1;S.users.push(u);S.activeId=u.id;save();render();toast('Profile added. Fill in its details.');},
+  useUser:a=>{S.activeId=a.dataset.id;save();render();},
+  delUser:a=>{if(!confirmTap(a))return;const id=a.dataset.id;S.users=S.users.filter(u=>u.id!==id);S.ms=S.ms.filter(m=>m.userId!==id);if(S.activeId===id)S.activeId=S.users[0].id;save();render();toast('Profile deleted');},
+  goalAdd:()=>{const k=$('goal-k').value,t=typeOf(k),v=fromDisp(t,$('goal-v').value);if(v==null){toast('Enter a target value');return;}const u=active();const [l]=lastTwo(u,k);
+    u.goals=(u.goals||[]).filter(g=>g.k!==k);u.goals.push({k,v,date:$('goal-d').value||'',start:l?l.c.v:null});save();render();toast('Goal saved');},
+  goalDel:a=>{active().goals.splice(+a.dataset.i,1);save();render();},
+  addCustom:()=>{const n=$('ct-n').value.trim();if(!n){toast('Enter a name');return;}const k='c_'+Date.now().toString(36);S.settings.custom.push({k,n,unit:$('ct-u').value.trim(),d:clamp(+$('ct-d').value||0,0,3)});S.settings.types[k]={on:true,c:'#6b6b6b'};save();render();toast('Type added');},
+  delCustom:a=>{if(!confirmTap(a))return;const k=a.dataset.k;S.settings.custom=S.settings.custom.filter(c=>c.k!==k);delete S.settings.types[k];S.ms.forEach(m=>{delete m.v[k];});save();render();},
+  remDay:a=>{const d=+a.dataset.d,r=S.settings.reminder;r.days=r.days.includes(d)?r.days.filter(x=>x!==d):r.days.concat(d).sort();save();syncReminder();render();},
+  probe:()=>runProbe(),
+  copyProbe:()=>copy(probeCSV()),
+  copyLog:()=>copy(LOG.join('\n')),
+  clearLog:()=>{LOG.length=0;const el=$('log');if(el)el.textContent='No traffic yet.';}
+};
+document.addEventListener('click',e=>{
+  const tabB=e.target.closest('nav.tabs button');if(tabB){go(tabB.dataset.tab);return;}
+  const svg=e.target.closest('svg[data-chart]');if(svg){const id=svg.dataset.chart;const p=chartPointer(svg,e);if(p&&CH[id]&&CH[id].last===p.id){const m=S.ms.find(x=>x.id===p.id);if(m)openModal(detailHTML(m));}if(p&&CH[id])CH[id].last=p.id;return;}
+  const a=e.target.closest('[data-act]');
+  if(a&&ACT[a.dataset.act]){if(a.tagName==='TR'&&e.target.closest('input'))return;ACT[a.dataset.act](a,e);return;}
+  const row=e.target.closest('tr[data-row]');if(row&&!e.target.closest('input')){const m=S.ms.find(x=>x.id===row.dataset.row);if(m)openModal(detailHTML(m));return;}
+  if(e.target.id==='modal')closeModal();
+});
+document.addEventListener('pointermove',e=>{const svg=e.target.closest&&e.target.closest('svg[data-chart]');if(svg&&e.pointerType==='mouse')chartPointer(svg,e);});
+document.addEventListener('keydown',e=>{if(e.key==='Escape'&&!$('modal').hidden)closeModal();});
+document.addEventListener('submit',e=>{if(e.target.id==='editForm'){e.preventDefault();saveEdit(e.target);}});
+function setPath(obj,path,val){const p=path.split('.');let o=obj;for(let i=0;i<p.length-1;i++)o=o[p[i]];o[p[p.length-1]]=val;}
+function syncReminder(){if(NATIVE&&NATIVE.setReminder){try{NATIVE.setReminder(JSON.stringify(S.settings.reminder));}catch(e){}}}
+document.addEventListener('change',e=>{
+  const el=e.target;
+  if(el.id==='userSel'){S.activeId=el.value;SEL.clear();save();render();return;}
+  if(el.id==='assistOn'){assist.on=el.checked;if(assist.on&&!assist.carrier){const c=S.users.find(x=>x.id!==S.activeId&&lastTwo(x,'weight')[0]);assist.carrier=c?c.id:'';}render();return;}
+  if(el.id==='assistCarrier'){assist.carrier=el.value;return;}
+  if(el.dataset.sel){if(el.checked)SEL.add(el.dataset.sel);else SEL.delete(el.dataset.sel);render();return;}
+  if(el.dataset.ui){S.ui[el.dataset.ui]=el.value;save();render();return;}
+  if(el.dataset.user){const u=active(),k=el.dataset.user;let v=el.value;
+    if(k==='height'){v=fromDisp({kind:'len'},v);if(v==null||v<50||v>260){toast('Enter a height between 50 and 260 cm');render();return;}v=Math.round(v*10)/10;}
+    else if(k==='sex'||k==='activity'||k==='slot')v=clamp(parseInt(v,10)||0,0,k==='activity'?4:k==='slot'?255:1);
+    else if(k==='name')v=v.trim()||'Profile';
+    u[k]=v;save();render();return;}
+  if(el.dataset.amp){const u=active();if(el.value)u.amp[el.dataset.amp]=el.value;else delete u.amp[el.dataset.amp];save();render();return;}
+  if(el.dataset.type){S.settings.types[el.dataset.type]=S.settings.types[el.dataset.type]||{c:colorOf(el.dataset.type)};S.settings.types[el.dataset.type].on=el.checked;save();return;}
+  if(el.dataset.color){S.settings.types[el.dataset.color].c=el.value;save();return;}
+  if(el.dataset.set){const p=el.dataset.set;let v=el.type==='checkbox'?el.checked:el.value;
+    if(/^chart\.(window|maxGap|projBasis|projDays|projDegree)$/.test(p))v=Math.max(1,parseInt(v,10)||1);if(p==='chart.alpha')v=clamp(parseFloat(v)||0.3,0.01,1);
+    setPath(S.settings,p,v);save();if(p==='theme')setTheme();if(p.startsWith('reminder'))syncReminder();
+    if(p==='backup.on'&&v&&!S.settings.backup.folder&&NATIVE&&NATIVE.pickBackupFolder)NATIVE.pickBackupFolder();
+    render();return;}
+  if(el.id==='fileCsv'||el.id==='fileBackup'){const file=el.files[0];if(!file)return;const r=new FileReader();
+    r.onload=()=>{if(el.id==='fileCsv'){const res=importCSV(String(r.result));toast(res.err?res.err:`Imported ${res.n} measurement${res.n===1?'':'s'}${res.skip?`, skipped ${res.skip}`:''}`);}
+      else{try{const d=JSON.parse(r.result);if(d.users&&d.ms)S=fill(d);else if(d.profiles&&d.measurements)S=fill(migrate(d));else throw 0;save();setTheme();toast('Backup restored');}catch(_){toast('That file is not a VScale Offline backup');}}
+      render();};r.readAsText(file);el.value='';}
+});
+
+// ---------- start ----------
+load();setTheme();render();setStatus('off','Not connected');syncReminder();
+if(!NATIVE)try{if('serviceWorker' in navigator&&location.protocol==='https:'&&!IN_PREVIEW)navigator.serviceWorker.register('sw.js').catch(()=>{});}catch(e){}
+window.__test={S:()=>S,compute,toCSV,toTXT,importCSV,parseFrame,evaluate,go};
+})();
+</script>
+</body>
+</html>
