@@ -54,13 +54,27 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
 
     override fun onResume() {
         super.onResume()
+        startReader()
+        postState()
+    }
+
+    private fun startReader() {
         val flags = NfcAdapter.FLAG_READER_NFC_A or NfcAdapter.FLAG_READER_NFC_B or
                 NfcAdapter.FLAG_READER_NFC_F or NfcAdapter.FLAG_READER_NFC_V or
                 NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK or NfcAdapter.FLAG_READER_NO_PLATFORM_SOUNDS
         val extras = Bundle()
         extras.putInt(NfcAdapter.EXTRA_READER_PRESENCE_CHECK_DELAY, 250)
         runCatching { nfc?.enableReaderMode(this, this, flags, extras) }
-        postState()
+    }
+
+    /** Re-arm the reader so a card that is ALREADY on the phone gets re-delivered. Reader mode
+     *  only fires for a tag newly entering the field, so without this, arming an action while the
+     *  card sits on the phone would wait forever until the card is lifted and tapped again. */
+    private fun rearm() {
+        runOnUiThread {
+            runCatching { nfc?.disableReaderMode(this) }
+            runCatching { startReader() }
+        }
     }
 
     override fun onPause() {
@@ -118,6 +132,14 @@ class MainActivity : Activity(), NfcAdapter.ReaderCallback {
         @JavascriptInterface
         fun setOp(json: String) {
             pending = runCatching { JSONObject(json) }.getOrDefault(JSONObject().put("op", "scan"))
+        }
+
+        /** Set the operation AND re-read a card already on the phone, so the user can rest the
+         *  card down and then tap an action without having to lift and re-present it. */
+        @JavascriptInterface
+        fun armOp(json: String) {
+            pending = runCatching { JSONObject(json) }.getOrDefault(JSONObject().put("op", "scan"))
+            rearm()
         }
 
         @JavascriptInterface

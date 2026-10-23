@@ -194,15 +194,22 @@ function refreshState(){ try{ if(N&&N.getState) state(N.getState()); }catch(e){}
 // arm an operation, then show the tap overlay
 function arm(op, title, msg){
   if(!N){ toast("Run this inside the Tapkit app."); return; }
-  try{ N.setOp(JSON.stringify(op)); }catch(e){ toast("Could not arm: "+e); return; }
+  var s=JSON.stringify(op);
+  try{ if(N.armOp) N.armOp(s); else N.setOp(s); }catch(e){ toast("Could not arm: "+e); return; }
   armed = op.op;
   $("tapTitle").textContent = title || "Hold the card to your phone";
   $("tapMsg").textContent = msg || "Keep it still against the back until it reads.";
   $("overlay").classList.add("on");
+  clearTimeout(window.__armTimer);
+  window.__armTimer=setTimeout(function(){
+    $("tapTitle").textContent="Didn’t read the card";
+    $("tapMsg").textContent="Lift the card away, then tap it to the back of the phone again — or press Cancel.";
+  }, 15000);
 }
 function cancelTap(e){
   if(e && e.target && e.target.id!=="overlay" && e.target.className!=="btn sec") return;
   $("overlay").classList.remove("on");
+  clearTimeout(window.__armTimer);
   armed=null;
   try{ N && N.setOp(JSON.stringify({op:"scan"})); }catch(_){}
 }
@@ -238,6 +245,7 @@ setKind("url");
 // ---- results from native
 window.onNfcResult=function(res){
   $("overlay").classList.remove("on");
+  clearTimeout(window.__armTimer);
   if(navigator.vibrate) try{navigator.vibrate(40)}catch(_){}
   window.__last = res;
   var tag = res.tag||{};

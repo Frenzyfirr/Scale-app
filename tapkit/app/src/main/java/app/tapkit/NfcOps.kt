@@ -93,6 +93,7 @@ object NfcOps {
             .filter { it.size == 6 }
         try {
             mc.connect()
+            runCatching { mc.timeout = 800 }
             val sectors = JSONArray()
             var readable = 0
             for (s in 0 until mc.sectorCount) {
@@ -193,6 +194,7 @@ object NfcOps {
             .mapNotNull { runCatching { Hex.decode(it) }.getOrNull() }.filter { it.size == 6 }
         return try {
             mc.connect()
+            runCatching { mc.timeout = 800 }   // don't hang forever on a flaky read
             var authed = false
             for (k in keys) {
                 val okA = runCatching { mc.authenticateSectorWithKeyA(0, k) }.getOrDefault(false)
