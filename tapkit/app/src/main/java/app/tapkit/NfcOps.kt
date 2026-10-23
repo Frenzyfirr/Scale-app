@@ -144,10 +144,12 @@ object NfcOps {
         val uidLen = tag.id.size
         o.put("uidLen", uidLen)
 
-        val gen1a = probeGen1a(tag)
-        o.put("gen1a", gen1a)
+        // Run the clean standard probe (Gen2) FIRST. The Gen1a backdoor command can leave a
+        // non-Gen1a card in an odd state, so doing it first could make the Gen2 check error out.
         val gen2 = probeGen2(tag, extraKeysHex)
         o.put("gen2", gen2)
+        val gen1a = probeGen1a(tag)
+        o.put("gen1a", gen1a)
 
         val magic = gen1a || gen2.optBoolean("writable")
         o.put("magic", magic)
@@ -157,7 +159,15 @@ object NfcOps {
             gen2.optBoolean("writable") -> "Gen2 / CUID (direct write)"
             else -> "Not detected as magic"
         })
-        o.put("uidNote", uidNote(magic, uidLen))
+
+        // If the MIFARE step threw a real error (rather than cleanly reporting read-only or an
+        // unknown key), say so — that points at the phone/read, not at the card's generation.
+        val reason = gen2.optString("reason")
+        val errored = !gen2.optBoolean("writable") && reason.isNotEmpty() &&
+                !reason.contains("read-only") && !reason.contains("no known key") && !reason.startsWith("not MIFARE")
+        o.put("uidNote", if (errored)
+            "The MIFARE Classic step errored (\"$reason\"). That usually means the card moved too soon, or this phone's NFC chip has limited MIFARE Classic support — not that the card is the wrong type. Hold the card still and try again; if it keeps erroring, test the same card in MIFARE Classic Tool to see whether this phone can do MIFARE Classic at all."
+        else uidNote(magic, uidLen))
         return o
     }
 
@@ -184,13 +194,18 @@ object NfcOps {
         return try {
             mc.connect()
             var authed = false
-            for (k in keys) { if (mc.authenticateSectorWithKeyA(0, k)) { authed = true; break } }
-            if (!authed) return JSONObject().put("writable", false).put("reason", "no known key for sector 0")
+            for (k in keys) {
+                val okA = runCatching { mc.authenticateSectorWithKeyA(0, k) }.getOrDefault(false)
+                if (okA) { authed = true; break }
+                val okB = runCatching { mc.authenticateSectorWithKeyB(0, k) }.getOrDefault(false)
+                if (okB) { authed = true; break }
+            }
+            if (!authed) return JSONObject().put("writable", false).put("reason", "no known key for sector 0 — add your key")
             val block0 = mc.readBlock(0)
-            mc.writeBlock(0, block0)                  // identical bytes; a normal card refuses this
+            mc.writeBlock(0, block0)                  // identical bytes; only a direct-write card accepts this
             JSONObject().put("writable", true)
         } catch (e: Exception) {
-            JSONObject().put("writable", false).put("reason", "block 0 is read-only")
+            JSONObject().put("writable", false).put("reason", e.message ?: "block 0 not writable")
         } finally {
             runCatching { mc.close() }
         }
