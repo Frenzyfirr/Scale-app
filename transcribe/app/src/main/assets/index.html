@@ -1,0 +1,168 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Scribe</title>
+<style>
+:root{
+  --bg:#f4f5fb; --surface:#ffffff; --ink:#191b2e; --muted:#5f6480; --line:#e0e2ee;
+  --accent:#4f46e5; --accent-ink:#fff; --accent-soft:#e6e5fb; --rec:#d6342b; --ok:#0f9d58;
+  --f:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; --mono:ui-monospace,Menlo,Consolas,monospace;
+}
+@media (prefers-color-scheme:dark){:root{
+  --bg:#0f1117; --surface:#181a22; --ink:#e8e9f2; --muted:#9a9fbb; --line:#272a36;
+  --accent:#8b85ff; --accent-ink:#0c0a2e; --accent-soft:#242347; --rec:#ff6b61; --ok:#52c98a; color-scheme:dark}}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--ink);font:15px/1.5 var(--f);display:flex;flex-direction:column;
+  padding:env(safe-area-inset-top) env(safe-area-inset-right) 0 env(safe-area-inset-left)}
+header{display:flex;align-items:center;gap:10px;padding:13px 16px;background:var(--surface);border-bottom:1px solid var(--line)}
+header h1{font-size:18px;margin:0;font-weight:800}
+.badge{font-size:11px;font-weight:700;color:var(--ok);border:1px solid var(--ok);border-radius:999px;padding:2px 8px;margin-left:auto}
+main{flex:1;min-height:0;display:flex;flex-direction:column;padding:14px 16px;gap:12px;max-width:720px;width:100%;margin:0 auto}
+.seg{display:flex;background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:4px}
+.seg button{flex:1;border:0;background:transparent;color:var(--muted);font:600 14px var(--f);padding:9px 6px;border-radius:999px;cursor:pointer}
+.seg button[aria-selected=true]{background:var(--accent);color:var(--accent-ink)}
+.seg button:disabled{opacity:.5}
+.status{font-size:12.5px;color:var(--muted);min-height:16px;text-align:center}
+.status .load{color:var(--accent);font-weight:600}
+.row{display:flex;gap:10px}
+.btn{flex:1;display:inline-flex;align-items:center;justify-content:center;gap:8px;border:0;border-radius:12px;
+  background:var(--accent);color:var(--accent-ink);font:700 15px var(--f);padding:14px;cursor:pointer}
+.btn.sec{background:var(--accent-soft);color:var(--accent)}
+.btn.rec{background:var(--rec);color:#fff}
+.btn:disabled{opacity:.5}
+.btn svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2}
+.prog{height:6px;border-radius:999px;background:var(--line);overflow:hidden;display:none}
+.prog.on{display:block}
+.prog i{display:block;height:100%;width:0;background:var(--accent);transition:width .2s}
+.out{flex:1;min-height:140px;display:flex;flex-direction:column;background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+textarea{flex:1;border:0;resize:none;background:transparent;color:var(--ink);font:16px/1.6 var(--f);padding:14px;outline:none;width:100%}
+.live{padding:0 14px 10px;color:var(--muted);font-size:15px;min-height:10px;font-style:italic}
+.bar{display:flex;gap:8px;padding:10px 0 14px}
+.bar .btn{font-size:14px;padding:11px}
+.empty{color:var(--muted);text-align:center;padding:26px 10px;font-size:14px}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--ink);color:var(--bg);
+  padding:10px 16px;border-radius:9px;font-size:14px;opacity:0;transition:.2s;pointer-events:none;z-index:9}
+.toast.on{opacity:1}
+.hint{font-size:12px;color:var(--muted);text-align:center}
+.dot{width:9px;height:9px;border-radius:50%;background:var(--rec);display:inline-block;animation:pulse 1s infinite}
+@keyframes pulse{50%{opacity:.3}}
+</style>
+</head>
+<body>
+<header>
+  <h1>Scribe</h1>
+  <span class="badge">OFFLINE</span>
+</header>
+<main>
+  <div class="seg" id="langs" role="tablist">
+    <button data-lang="en" aria-selected="true">English</button>
+    <button data-lang="pl" aria-selected="false">Polski</button>
+    <button data-lang="es" aria-selected="false">Español</button>
+  </div>
+  <div class="status" id="status">Loading English model…</div>
+
+  <div class="row">
+    <button class="btn" id="recBtn" onclick="toggleRec()" disabled>
+      <svg viewBox="0 0 24 24"><rect x="9" y="3" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+      <span id="recLbl">Record</span>
+    </button>
+    <button class="btn sec" id="fileBtn" onclick="Scribe.pickFile()" disabled>
+      <svg viewBox="0 0 24 24"><path d="M14 3v5h5M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M8 13h8M8 17h5"/></svg>
+      Audio file
+    </button>
+  </div>
+  <div class="prog" id="prog"><i id="progBar"></i></div>
+
+  <div class="out">
+    <textarea id="out" placeholder="Your transcript will appear here. Record, or pick an audio file." spellcheck="false"></textarea>
+    <div class="live" id="live"></div>
+  </div>
+  <div class="bar">
+    <button class="btn sec" onclick="copyOut()">Copy</button>
+    <button class="btn sec" onclick="saveOut()">Save .txt</button>
+    <button class="btn sec" onclick="clearOut()">Clear</button>
+  </div>
+  <p class="hint">Everything runs on your phone — no internet permission. First use of a language unpacks its model (a few seconds).</p>
+</main>
+<div class="toast" id="toast"></div>
+
+<script>
+var S = window.Scribe || null;
+var curLang = "en", micState = "idle", modelReady = false;
+
+function $(id){return document.getElementById(id)}
+function toast(m){var t=$("toast");t.textContent=m;t.classList.add("on");setTimeout(function(){t.classList.remove("on")},2200)}
+window.onToast = toast;
+
+// language selection
+document.querySelectorAll("#langs button").forEach(function(b){
+  b.onclick=function(){
+    if(b.getAttribute("aria-selected")==="true") return;
+    document.querySelectorAll("#langs button").forEach(function(x){x.setAttribute("aria-selected", x===b)});
+    curLang=b.dataset.lang; modelReady=false; setButtons();
+    try{ S && S.setLang(curLang); }catch(e){}
+  };
+});
+
+function setButtons(){
+  $("recBtn").disabled = !modelReady || micState==="recording" && false;
+  $("recBtn").disabled = !modelReady;
+  $("fileBtn").disabled = !modelReady || micState==="recording";
+}
+
+function toggleRec(){
+  if(!S){ toast("Open in the Scribe app."); return; }
+  if(micState==="recording"){ S.stopMic(); }
+  else { S.startMic(); }
+}
+
+// ---- native callbacks
+window.onState = function(lang, state, mic, busy, msg){
+  if(lang) curLang = lang;
+  micState = mic || "idle";
+  modelReady = (state==="ready");
+  var s=$("status");
+  if(state==="loading"){ s.innerHTML='<span class="load">Loading '+langName(lang)+' model…</span>'; }
+  else if(state==="error"){ s.textContent = "Model error: "+(msg||"failed"); }
+  else { s.textContent = micState==="recording" ? "" : "Ready — "+langName(curLang); }
+  // recording UI
+  var rb=$("recBtn"), rl=$("recLbl");
+  if(micState==="recording"){ rb.classList.add("rec"); rl.textContent="Stop"; s.innerHTML='<span class="dot"></span> Listening… speak now'; }
+  else { rb.classList.remove("rec"); rl.textContent="Record"; }
+  $("prog").classList.toggle("on", !!busy);
+  if(!busy) $("progBar").style.width="0%";
+  setButtons();
+};
+window.onPartial = function(t){ $("live").textContent = t || ""; };
+window.onSegment = function(t){
+  if(!t) return;
+  var o=$("out"); var v=o.value.trim();
+  o.value = (v ? v+" " : "") + t;
+  $("live").textContent="";
+  o.scrollTop = o.scrollHeight;
+};
+window.onFileText = function(t){
+  $("out").value = t || "";
+  $("live").textContent="";
+  $("prog").classList.remove("on"); $("progBar").style.width="0%";
+  toast(t ? "Transcribed" : "No speech found");
+};
+window.onFileProgress = function(pct){
+  $("prog").classList.add("on"); $("progBar").style.width = Math.max(0,Math.min(100,pct))+"%";
+};
+window.onError = function(m){ toast(m||"Error"); $("prog").classList.remove("on"); };
+
+function langName(c){ return c==="pl"?"Polish":c==="es"?"Spanish":"English"; }
+
+function copyOut(){ var v=$("out").value.trim(); if(!v){toast("Nothing to copy");return;} if(S&&S.copyText) S.copyText(v); else toast("Copy unavailable"); }
+function saveOut(){ var v=$("out").value.trim(); if(!v){toast("Nothing to save");return;} if(S&&S.saveText) S.saveText("transcript-"+curLang+".txt", v); }
+function clearOut(){ $("out").value=""; $("live").textContent=""; }
+
+// kick off default language
+if(S){ try{ S.setLang(curLang); }catch(e){} } else { $("status").textContent="Open this in the Scribe app."; }
+</script>
+</body>
+</html>
