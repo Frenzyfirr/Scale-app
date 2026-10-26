@@ -21,27 +21,19 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
         with:
-          packages: 'platforms;android-34 build-tools;34.0.0'
+          packages: 'platforms;android-34 build-tools;34.0.0 ndk;26.1.10909125 cmake;3.22.1'
       - uses: gradle/actions/setup-gradle@v3
         with:
           gradle-version: '8.7'
-      - name: Fetch Vosk offline models
+      - name: Fetch whisper.cpp source and model
         run: |
           set -e
-          dl() {
-            url="$1"; dir="$2"; tmp=$(mktemp -d)
-            echo "Downloading $url"
-            curl -fL --retry 3 -o "$tmp/m.zip" "$url"
-            unzip -q "$tmp/m.zip" -d "$tmp"
-            sub=$(find "$tmp" -maxdepth 1 -mindepth 1 -type d | head -1)
-            mkdir -p "app/src/main/assets/$dir"
-            cp -r "$sub"/* "app/src/main/assets/$dir/"
-            rm -rf "$tmp"
-          }
-          dl https://alphacephei.com/vosk/models/vosk-model-small-en-us-0.15.zip model-en
-          dl https://alphacephei.com/vosk/models/vosk-model-small-pl-0.22.zip model-pl
-          dl https://alphacephei.com/vosk/models/vosk-model-small-es-0.42.zip model-es
-          du -sh app/src/main/assets/model-* || true
+          git clone --depth 1 --branch v1.5.4 https://github.com/ggerganov/whisper.cpp app/src/main/cpp/whisper
+          echo "whisper.cpp files:"; ls app/src/main/cpp/whisper/ggml.c app/src/main/cpp/whisper/whisper.cpp
+          mkdir -p app/src/main/assets/whisper
+          curl -fL --retry 3 -o app/src/main/assets/whisper/ggml-base.bin \
+            https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin
+          ls -la app/src/main/assets/whisper/
       - name: Build
         run: |
           set -o pipefail

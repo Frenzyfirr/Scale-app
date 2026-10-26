@@ -58,11 +58,12 @@ textarea{flex:1;border:0;resize:none;background:transparent;color:var(--ink);fon
 </header>
 <main>
   <div class="seg" id="langs" role="tablist">
-    <button data-lang="en" aria-selected="true">English</button>
+    <button data-lang="auto" aria-selected="true">Auto</button>
+    <button data-lang="en" aria-selected="false">English</button>
     <button data-lang="pl" aria-selected="false">Polski</button>
     <button data-lang="es" aria-selected="false">Español</button>
   </div>
-  <div class="status" id="status">Loading English model…</div>
+  <div class="status" id="status">Loading model…</div>
 
   <div class="row">
     <button class="btn" id="recBtn" onclick="toggleRec()" disabled>
@@ -85,13 +86,13 @@ textarea{flex:1;border:0;resize:none;background:transparent;color:var(--ink);fon
     <button class="btn sec" onclick="saveOut()">Save .txt</button>
     <button class="btn sec" onclick="clearOut()">Clear</button>
   </div>
-  <p class="hint">Everything runs on your phone — no internet permission. First use of a language unpacks its model (a few seconds).</p>
+  <p class="hint">Runs entirely on your phone — no internet permission. One Whisper model covers all languages, with punctuation. First launch takes a few seconds to unpack the model.</p>
 </main>
 <div class="toast" id="toast"></div>
 
 <script>
 var S = window.Scribe || null;
-var curLang = "en", micState = "idle", modelReady = false;
+var curLang = "auto", micState = "idle", modelReady = false;
 
 function $(id){return document.getElementById(id)}
 function toast(m){var t=$("toast");t.textContent=m;t.classList.add("on");setTimeout(function(){t.classList.remove("on")},2200)}
@@ -100,15 +101,13 @@ window.onToast = toast;
 // language selection
 document.querySelectorAll("#langs button").forEach(function(b){
   b.onclick=function(){
-    if(b.getAttribute("aria-selected")==="true") return;
     document.querySelectorAll("#langs button").forEach(function(x){x.setAttribute("aria-selected", x===b)});
-    curLang=b.dataset.lang; modelReady=false; setButtons();
+    curLang=b.dataset.lang;
     try{ S && S.setLang(curLang); }catch(e){}
   };
 });
 
 function setButtons(){
-  $("recBtn").disabled = !modelReady || micState==="recording" && false;
   $("recBtn").disabled = !modelReady;
   $("fileBtn").disabled = !modelReady || micState==="recording";
 }
@@ -120,17 +119,16 @@ function toggleRec(){
 }
 
 // ---- native callbacks
-window.onState = function(lang, state, mic, busy, msg){
-  if(lang) curLang = lang;
+window.onState = function(state, mic, busy, msg){
   micState = mic || "idle";
   modelReady = (state==="ready");
   var s=$("status");
-  if(state==="loading"){ s.innerHTML='<span class="load">Loading '+langName(lang)+' model…</span>'; }
+  if(state==="loading"){ s.innerHTML='<span class="load">Loading model… (first launch, ~15s)</span>'; }
   else if(state==="error"){ s.textContent = "Model error: "+(msg||"failed"); }
-  else { s.textContent = micState==="recording" ? "" : "Ready — "+langName(curLang); }
-  // recording UI
+  else if(busy){ s.innerHTML='<span class="load">Transcribing… please wait</span>'; }
+  else { s.textContent = micState==="recording" ? "" : "Ready"; }
   var rb=$("recBtn"), rl=$("recLbl");
-  if(micState==="recording"){ rb.classList.add("rec"); rl.textContent="Stop"; s.innerHTML='<span class="dot"></span> Listening… speak now'; }
+  if(micState==="recording"){ rb.classList.add("rec"); rl.textContent="Stop"; s.innerHTML='<span class="dot"></span> Listening… text updates every ~12s'; }
   else { rb.classList.remove("rec"); rl.textContent="Record"; }
   $("prog").classList.toggle("on", !!busy);
   if(!busy) $("progBar").style.width="0%";

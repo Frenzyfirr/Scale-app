@@ -6,15 +6,19 @@ plugins {
 android {
     namespace = "app.scribe"
     compileSdk = 34
+    ndkVersion = "26.1.10909125"
 
     defaultConfig {
         applicationId = "app.scribe"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
-        ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
+        versionCode = 2
+        versionName = "2.0"
+        ndk { abiFilters += listOf("arm64-v8a") }   // whisper.cpp native build; covers all modern phones
+        externalNativeBuild { cmake { cppFlags += "-std=c++17" } }
     }
+
+    externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt"); version = "3.22.1" } }
 
     // One fixed key, so new builds install over the old one.
     signingConfigs {
@@ -36,6 +40,4 @@ android {
 
 dependencies {
     implementation("androidx.webkit:webkit:1.11.0")
-    implementation("com.alphacephei:vosk-android:0.3.47")
-    implementation("net.java.dev.jna:jna:5.13.0@aar")
 }
