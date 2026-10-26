@@ -19,8 +19,8 @@ add_library(scribe-whisper SHARED
 target_include_directories(scribe-whisper PRIVATE ${W})
 
 target_compile_options(scribe-whisper PRIVATE -O3 -ffast-math -fvisibility=hidden -DNDEBUG)
-# arm64-v8a has NEON by default; help ggml pick the fast paths.
-target_compile_definitions(scribe-whisper PRIVATE GGML_USE_ACCELERATE=0)
+# No GGML_USE_* backends defined: ggml uses its portable CPU path (NEON on arm64 by default).
+# (Defining GGML_USE_ACCELERATE at all — even =0 — makes ggml include Apple's Accelerate header.)
 
 find_library(log-lib log)
 target_link_libraries(scribe-whisper ${log-lib})
