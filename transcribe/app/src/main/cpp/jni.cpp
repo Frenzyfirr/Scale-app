@@ -20,7 +20,7 @@ Java_app_scribe_WhisperJni_freeContext(JNIEnv*, jclass, jlong ptr) {
 
 extern "C" JNIEXPORT jstring JNICALL
 Java_app_scribe_WhisperJni_transcribe(JNIEnv* env, jclass, jlong ptr, jint nThreads,
-                                      jfloatArray audio, jstring lang) {
+                                      jfloatArray audio, jstring lang, jint beamSize) {
     whisper_context* ctx = (whisper_context*)(intptr_t) ptr;
     if (!ctx) return env->NewStringUTF("");
 
@@ -28,13 +28,15 @@ Java_app_scribe_WhisperJni_transcribe(JNIEnv* env, jclass, jlong ptr, jint nThre
     std::vector<float> samples((size_t) n);
     if (n > 0) env->GetFloatArrayRegion(audio, 0, n, samples.data());
 
-    whisper_full_params params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY);
+    whisper_full_params params = whisper_full_default_params(
+        beamSize > 1 ? WHISPER_SAMPLING_BEAM_SEARCH : WHISPER_SAMPLING_GREEDY);
+    if (beamSize > 1) params.beam_search.beam_size = beamSize;
     params.print_realtime   = false;
     params.print_progress   = false;
     params.print_timestamps = false;
     params.print_special    = false;
     params.translate        = false;
-    params.no_context       = true;
+    params.no_context       = false;   // keep context across 30s windows for coherence
     params.single_segment   = false;
     params.n_threads        = nThreads > 0 ? nThreads : 4;
 

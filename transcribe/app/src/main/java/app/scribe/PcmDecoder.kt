@@ -1,6 +1,7 @@
 package app.scribe
 
 import android.content.Context
+import android.media.AudioFormat
 import android.media.MediaCodec
 import android.media.MediaExtractor
 import android.media.MediaFormat
@@ -42,11 +43,13 @@ class PcmDecoder {
         var channels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
         val durationUs = if (format.containsKey(MediaFormat.KEY_DURATION)) format.getLong(MediaFormat.KEY_DURATION) else 0L
 
+        runCatching { format.setInteger(MediaFormat.KEY_PCM_ENCODING, AudioFormat.ENCODING_PCM_16BIT) }
         val codec = MediaCodec.createDecoderByType(mime)
         codec.configure(format, null, null, 0)
         codec.start()
 
         var resampler = Resampler(srcRate, 16000, channels)
+        var pcmEncoding = AudioFormat.ENCODING_PCM_16BIT
         val info = MediaCodec.BufferInfo()
         var inEos = false
         var outEos = false
@@ -80,9 +83,10 @@ class PcmDecoder {
                             val outBuf = codec.getOutputBuffer(outIdx)!!
                             outBuf.position(info.offset)
                             outBuf.limit(info.offset + info.size)
-                            val pcm = ByteArray(info.size)
-                            outBuf.get(pcm)
-                            val res = resampler.process(pcm)
+                            val raw = ByteArray(info.size)
+                            outBuf.get(raw)
+                            val pcm16 = if (pcmEncoding == AudioFormat.ENCODING_PCM_FLOAT) floatBytesToShort(raw) else raw
+                            val res = resampler.process(pcm16)
                             if (res.isNotEmpty()) sink.onPcm(res, res.size)
                         }
                         codec.releaseOutputBuffer(outIdx, false)
@@ -92,6 +96,7 @@ class PcmDecoder {
                         val nf = codec.outputFormat
                         val nr = if (nf.containsKey(MediaFormat.KEY_SAMPLE_RATE)) nf.getInteger(MediaFormat.KEY_SAMPLE_RATE) else srcRate
                         val nc = if (nf.containsKey(MediaFormat.KEY_CHANNEL_COUNT)) nf.getInteger(MediaFormat.KEY_CHANNEL_COUNT) else channels
+                        pcmEncoding = if (nf.containsKey(MediaFormat.KEY_PCM_ENCODING)) nf.getInteger(MediaFormat.KEY_PCM_ENCODING) else pcmEncoding
                         if (nr != srcRate || nc != channels) {
                             srcRate = nr; channels = nc
                             resampler = Resampler(srcRate, 16000, channels)
@@ -105,6 +110,20 @@ class PcmDecoder {
             runCatching { ex.release() }
         }
         sink.onProgress(100)
+    }
+
+    /** Some decoders emit 32-bit float PCM; convert to the 16-bit the resampler expects. */
+    private fun floatBytesToShort(b: ByteArray): ByteArray {
+        val fb = ByteBuffer.wrap(b).order(ByteOrder.LITTLE_ENDIAN).asFloatBuffer()
+        val n = fb.remaining()
+        val out = ByteArray(n * 2)
+        val ob = ByteBuffer.wrap(out).order(ByteOrder.LITTLE_ENDIAN)
+        for (i in 0 until n) {
+            var v = Math.round(fb.get(i) * 32768f)
+            if (v > 32767) v = 32767 else if (v < -32768) v = -32768
+            ob.putShort(v.toShort())
+        }
+        return out
     }
 
     /** Downmix to mono + linear resample to 16 kHz, carrying state across chunks. */

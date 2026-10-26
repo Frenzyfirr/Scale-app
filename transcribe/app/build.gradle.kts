@@ -12,8 +12,8 @@ android {
         applicationId = "app.scribe"
         minSdk = 24
         targetSdk = 34
-        versionCode = 2
-        versionName = "2.0"
+        versionCode = 3
+        versionName = "2.1"
         ndk { abiFilters += listOf("arm64-v8a") }   // whisper.cpp native build; covers all modern phones
         externalNativeBuild { cmake { cppFlags += "-std=c++17" } }
     }

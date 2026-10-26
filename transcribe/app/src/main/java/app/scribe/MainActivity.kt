@@ -119,7 +119,7 @@ class MainActivity : Activity() {
         for (i in samples.indices) floats[i] = samples[i] / 32768.0f
         io.execute {
             if (ctxPtr == 0L) return@execute
-            val t = runCatching { WhisperJni.transcribe(ctxPtr, nThreads, floats, lang) }.getOrDefault("")
+            val t = runCatching { WhisperJni.transcribe(ctxPtr, nThreads, floats, lang, 1) }.getOrDefault("")
             if (t.isNotBlank()) post("window.onSegment(${q(t.trim())})")
         }
     }
@@ -142,7 +142,9 @@ class MainActivity : Activity() {
                 })
                 post("window.onFileProgress(78)")
                 val floats = pcm16ToFloats(pcm.toByteArray())
-                val text = if (ctxPtr != 0L) WhisperJni.transcribe(ctxPtr, nThreads, floats, lang) else ""
+                val secs = floats.size / 16000.0
+                post("window.onToast(${q("Audio length: %.1fs".format(secs))})")   // sanity check vs the real clip
+                val text = if (ctxPtr != 0L) WhisperJni.transcribe(ctxPtr, nThreads, floats, lang, 5) else ""
                 post("window.onFileProgress(100)")
                 post("window.onFileText(${q(text.trim())})")
                 postState("ready", busy = false)
