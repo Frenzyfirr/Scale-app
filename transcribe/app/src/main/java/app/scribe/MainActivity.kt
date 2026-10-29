@@ -143,7 +143,7 @@ class MainActivity : Activity() {
                 post("window.onFileProgress(78)")
                 val floats = pcm16ToFloats(pcm.toByteArray())
                 val secs = floats.size / 16000.0
-                post("window.onToast(${q("Audio length: %.1fs".format(secs))})")   // sanity check vs the real clip
+                post("window.onFileInfo(${q("Audio length: %.1fs  —  should match the clip".format(secs))})")
                 val text = if (ctxPtr != 0L) WhisperJni.transcribe(ctxPtr, nThreads, floats, lang, 5) else ""
                 post("window.onFileProgress(100)")
                 post("window.onFileText(${q(text.trim())})")
