@@ -5,7 +5,7 @@ plugins {
 
 android {
     namespace = "app.tappay"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "app.tappay"
